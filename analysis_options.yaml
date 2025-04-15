@@ -1,0 +1,15 @@
+include: package:flutter_lints/flutter.yaml
+
+linter:
+  rules:
+    - prefer_const_constructors
+    - prefer_const_declarations
+    - prefer_single_quotes
+    - avoid_print
+    - use_super_parameters
+
+analyzer:
+  errors:
+    # Ignore some errors during development
+    unused_import: warning
+    uri_has_not_been_generated: ignore 
