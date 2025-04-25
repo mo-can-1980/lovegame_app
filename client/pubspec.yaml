@@ -1,0 +1,33 @@
+name: lovegame
+description: A Flutter application for tracking tennis matches.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ">=2.18.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  cupertino_icons: ^1.0.5
+  provider: ^6.0.5
+  dio: ^5.3.2
+  intl: ^0.19.0
+  http: ^1.3.0
+  path_provider: ^2.1.1
+  flutter_svg: ^2.1.0
+  html: ^0.15.4
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^2.0.2
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/2025_atp_tournament.json
+    - assets/images/
+    - assets/svg/
