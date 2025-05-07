@@ -1,4 +1,6 @@
+import 'package:LoveGame/pages/player_details_page.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 class TennisScoreCard extends StatelessWidget {
   final String player1;
@@ -23,6 +25,16 @@ class TennisScoreCard extends StatelessWidget {
   final bool isPlayer1Winner; // 新增：标识球员1是否为获胜者
   final bool isPlayer2Winner; // 新增：标识球员2是否为获胜者
   final String? matchType;
+  final String? player1FlagUrl;
+  final String? player2FlagUrl;
+  final String? player1ImageUrl;
+  final String? player2ImageUrl;
+  final String? matchTime;
+  final String? stadium;
+  final String? tournamentName;
+  // 添加球员ID参数
+  final String? player1Id;
+  final String? player2Id;
 
   const TennisScoreCard(
       {super.key,
@@ -47,20 +59,37 @@ class TennisScoreCard extends StatelessWidget {
       this.onDetailPressed,
       this.isPlayer1Winner = false, // 默认为false
       this.isPlayer2Winner = false, // 默认为false
-      this.matchType});
+      this.matchType,
+      this.player2FlagUrl,
+      this.player1FlagUrl,
+      this.player1ImageUrl,
+      this.player2ImageUrl,
+      this.matchTime,
+      this.stadium,
+      this.tournamentName,
+      this.player1Id,
+      this.player2Id});
+  String _formatPlayerName(String name) {
+    // 如果名称超过16个字符，按空格分隔，取第一个元素的第一个字母加空格连接最后一个元素
+    if (name.length > 13) {
+      List<String> nameParts = name.split(' ');
+      if (nameParts.length > 1) {
+        String firstName = nameParts.first;
+        String lastName = nameParts.last;
+        return '${firstName[0]}. $lastName';
+      }
+    }
+    return name;
+  }
 
   @override
   Widget build(BuildContext context) {
     // 获取国旗图片URL
-    final player1FlagUrl = _getFlagImageUrl(player1Country);
-    final player2FlagUrl = _getFlagImageUrl(player2Country);
+
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     const backgroundColor = Color(0xFF0C0D0C); // 使用深灰色背景
     final borderColor = Colors.white.withOpacity(0.04); // 减小边框透明度，使其更加微妙
-    debugPrint('player1: $player1');
-    debugPrint('player2: $player2');
-    debugPrint('set1Scores: $set1Scores');
-    debugPrint('set2Scores: $set2Scores');
+
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6.0),
       decoration: BoxDecoration(
@@ -80,7 +109,7 @@ class TennisScoreCard extends StatelessWidget {
         children: [
           // 显示比赛状态和回合信息
           Padding(
-            padding: const EdgeInsets.fromLTRB(12.0, 10.0, 12.0, 4.0),
+            padding: const EdgeInsets.fromLTRB(12.0, 12.0, 12.0, 8.0),
             child: Row(
               children: [
                 // 直播或已完成状态指示器
@@ -102,6 +131,7 @@ class TennisScoreCard extends StatelessWidget {
                           color: Color(0xFF94E831),
                           fontSize: 12,
                           fontWeight: FontWeight.bold,
+                          height: 1.2,
                         ),
                       ),
                     ],
@@ -110,34 +140,25 @@ class TennisScoreCard extends StatelessWidget {
                   Row(
                     children: [
                       Text(
-                        matchType == 'completed' ? 'Completed' : 'Unmatch',
-                        style: TextStyle(
+                        matchType.toString().toLowerCase() == 'completed'
+                            ? 'Completed'
+                            : 'Schedule',
+                        style: const TextStyle(
                           color: Color(0xFFAC49FF),
                           fontSize: 12,
                           fontWeight: FontWeight.bold,
+                          height: 1.2,
                         ),
                       ),
-                      if (matchDuration != null)
-                        Row(
-                          children: [
-                            const SizedBox(width: 6),
-                            Text(
-                              '$matchDuration',
-                              style: TextStyle(
-                                color: Colors.white.withOpacity(0.6),
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
-                        ),
                     ],
                   ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 6),
                 Text(
-                  roundInfo,
+                  '${tournamentName.toString().replaceAll(RegExp(r'[\r\n]+'), '')},$roundInfo',
                   style: TextStyle(
                     color: Colors.white.withOpacity(0.6),
                     fontSize: 12,
+                    height: 1.2,
                   ),
                 ),
               ],
@@ -152,7 +173,7 @@ class TennisScoreCard extends StatelessWidget {
           ),
 
           Padding(
-            padding: const EdgeInsets.all(12.0),
+            padding: const EdgeInsets.fromLTRB(0.0, 12.0, 12.0, 10.0),
             child: Column(
               children: [
                 // 比分表格
@@ -161,9 +182,9 @@ class TennisScoreCard extends StatelessWidget {
                   final availableWidth = constraints.maxWidth;
                   final playerColumnWidth = availableWidth * 0.65; // 球员名列宽度
                   // 确保所有行有相同数量的列
-                  const totalColumns = 4; // +1 是球员列
+                  const totalColumns = 5; // +1 是球员列
                   final scoreColumnWidth =
-                      (availableWidth - playerColumnWidth) / totalColumns - 1;
+                      (availableWidth - playerColumnWidth) / (totalColumns - 1);
 
                   // 创建列宽映射
                   final Map<int, TableColumnWidth> columnWidths = {
@@ -178,57 +199,194 @@ class TennisScoreCard extends StatelessWidget {
                     defaultColumnWidth: FixedColumnWidth(scoreColumnWidth),
                     columnWidths: {
                       0: FixedColumnWidth(playerColumnWidth), // 球员名字
-                      1: FixedColumnWidth(scoreColumnWidth), // 第一局
-                      2: FixedColumnWidth(scoreColumnWidth), // 第二局
-                      3: FixedColumnWidth(scoreColumnWidth), // 第三局
+                      1: FixedColumnWidth(scoreColumnWidth), //正在直播的局分
+                      2: FixedColumnWidth(scoreColumnWidth), // 第一局
+                      3: FixedColumnWidth(scoreColumnWidth), // 第二局
+                      4: FixedColumnWidth(scoreColumnWidth), // 第三局
                       // 当前局分列（仅直播时显示）
                     },
                     children: [
                       TableRow(
                         children: [
                           // 球员1名称
-                          // 在TableRow中显示球员1名称的部分
                           TableCell(
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  player1Country,
-                                  style: TextStyle(
-                                    color: Colors.white.withOpacity(0.7),
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
-                                Expanded(
-                                  child: Row(
-                                    children: [
-                                      Text(
-                                        '${player1.replaceAll(RegExp(r'[\r\n]+'), '')} ${player1Rank.replaceAll(RegExp(r'[\r\n]+'), '')}',
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.w500,
-                                          fontSize: 14.0,
+                            verticalAlignment:
+                                TableCellVerticalAlignment.middle,
+                            child: Padding(
+                              padding: const EdgeInsets.only(left: 12.0),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                mainAxisAlignment:
+                                    MainAxisAlignment.start, // 添加这一行
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  if (player1FlagUrl!.isNotEmpty)
+                                    ClipRRect(
+                                      borderRadius:
+                                          BorderRadius.circular(4.0), // 国旗添加圆角
+                                      child: SvgPicture.network(
+                                        player1FlagUrl.toString().trim(),
+                                        width: 22, // 国旗尺寸稍小
+                                        height: 16,
+                                        placeholderBuilder:
+                                            (BuildContext context) => Container(
+                                          width: 22,
+                                          height: 16,
+                                          color: Colors.grey.withOpacity(0.3),
                                         ),
-                                        overflow: TextOverflow.ellipsis,
                                       ),
-                                      if (!isLive && isPlayer1Winner)
-                                        const Padding(
-                                          padding: EdgeInsets.only(left: 4.0),
-                                          child: Icon(
-                                            Icons.check_circle,
-                                            color: Color(0xFF94E831),
-                                            size: 14.0,
+                                    )
+                                  else
+                                    Container(
+                                        width: 22, // 国旗尺寸稍小
+                                        height: 16,
+                                        decoration: BoxDecoration(
+                                          border: Border.all(
+                                            color: const Color(0xFFD7D9DC),
+                                            width: 1,
                                           ),
+                                          borderRadius:
+                                              BorderRadius.circular(4),
                                         ),
-                                    ],
+                                        clipBehavior: Clip.hardEdge,
+                                        child: null),
+                                  const SizedBox(width: 6),
+                                  // 添加球员头像
+                                  GestureDetector(
+                                    onTap: () {
+                                      if (player1Id != null) {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (context) =>
+                                                PlayerDetailsPage(
+                                              playerId: player1Id!,
+                                              playerName: player1,
+                                              playerCountry: player1Country,
+                                              playerColor:
+                                                  const Color(0xFF94E831),
+                                            ),
+                                          ),
+                                        );
+                                      }
+                                    },
+                                    child: Container(
+                                      width: 28,
+                                      height: 28,
+                                      margin: const EdgeInsets.only(right: 8),
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        border: Border.all(
+                                          color: Colors.white.withOpacity(0.2),
+                                          width: 1,
+                                        ),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color:
+                                                Colors.black.withOpacity(0.2),
+                                            blurRadius: 4,
+                                            offset: const Offset(0, 2),
+                                          ),
+                                        ],
+                                      ),
+                                      child: ClipRRect(
+                                        borderRadius: BorderRadius.circular(14),
+                                        child: player1ImageUrl != null &&
+                                                player1ImageUrl!.isNotEmpty
+                                            ? Image.network(
+                                                player1ImageUrl!,
+                                                fit: BoxFit.cover,
+                                                errorBuilder: (context, error,
+                                                    stackTrace) {
+                                                  return Container(
+                                                    color: Colors.grey.shade800,
+                                                    child: const Icon(
+                                                      Icons.person,
+                                                      color: Colors.white70,
+                                                      size: 16,
+                                                    ),
+                                                  );
+                                                },
+                                              )
+                                            : Container(
+                                                color: Colors.grey.shade800,
+                                                child: const Icon(
+                                                  Icons.person,
+                                                  color: Colors.white70,
+                                                  size: 16,
+                                                ),
+                                              ),
+                                      ),
+                                    ),
                                   ),
-                                ),
-                              ],
+                                  Expanded(
+                                    child: Row(
+                                      children: [
+                                        Text(
+                                          '${_formatPlayerName(player1.replaceAll(RegExp(r'[\r\n]+'), ''))} ${player1Rank.replaceAll(RegExp(r'[\r\n]+'), '')}',
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.w500,
+                                            fontSize: 14.0,
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        if (!isLive && isPlayer1Winner)
+                                          const Padding(
+                                            padding: EdgeInsets.only(left: 4.0),
+                                            child: Icon(
+                                              Icons.check_circle,
+                                              color: Color(0xFF94E831),
+                                              size: 14.0,
+                                            ),
+                                          ),
+                                        // 显示发球指示器
+                                        if (isLive && serving1)
+                                          Padding(
+                                            padding: const EdgeInsets.only(
+                                                left: 8.0),
+                                            child: Container(
+                                              width: 12,
+                                              height: 12,
+                                              decoration: const BoxDecoration(
+                                                color: Color(0xFF94E831),
+                                                shape: BoxShape.circle,
+                                              ),
+                                              child: const Icon(
+                                                Icons.sports_tennis,
+                                                color: Colors.black,
+                                                size: 8,
+                                              ),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                           TableCell(
+                            verticalAlignment:
+                                TableCellVerticalAlignment.middle,
+                            child: Container(
+                              alignment: Alignment.centerRight,
+                              padding: const EdgeInsets.only(right: 8.0),
+                              child: isLive
+                                  ? Text(
+                                      currentGameScore1,
+                                      style: const TextStyle(
+                                        color: Color(0xFF94E831),
+                                        fontSize: 14.0,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    )
+                                  : const SizedBox(), // 非直播时为空
+                            ),
+                          ),
+                          TableCell(
+                            verticalAlignment:
+                                TableCellVerticalAlignment.middle,
                             child: Container(
                               alignment: Alignment.centerRight,
                               child: _buildSetScoreWidget(
@@ -241,6 +399,8 @@ class TennisScoreCard extends StatelessWidget {
                             ),
                           ),
                           TableCell(
+                            verticalAlignment:
+                                TableCellVerticalAlignment.middle,
                             child: Container(
                               alignment: Alignment.centerRight,
                               child: _buildSetScoreWidget(
@@ -253,6 +413,8 @@ class TennisScoreCard extends StatelessWidget {
                             ),
                           ),
                           TableCell(
+                            verticalAlignment:
+                                TableCellVerticalAlignment.middle,
                             child: Container(
                               alignment: Alignment.centerRight,
                               child: _buildSetScoreWidget(
@@ -266,52 +428,206 @@ class TennisScoreCard extends StatelessWidget {
                           ),
                         ],
                       ),
-
+                      // 球员之间的间隔
+                      TableRow(
+                        children: [
+                          TableCell(
+                              child: SizedBox(height: isLive ? 6.0 : 10.0)),
+                          TableCell(
+                              child: SizedBox(height: isLive ? 6.0 : 10.0)),
+                          TableCell(
+                              child: SizedBox(height: isLive ? 6.0 : 10.0)),
+                          TableCell(
+                              child: SizedBox(height: isLive ? 6.0 : 10.0)),
+                          TableCell(
+                              child: SizedBox(height: isLive ? 6.0 : 10.0)),
+                        ],
+                      ),
                       // 球员2信息
                       TableRow(
                         children: [
                           // 球员2名称
                           TableCell(
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  player2Country,
-                                  style: TextStyle(
-                                    color: Colors.white.withOpacity(0.7),
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
-                                Expanded(
-                                  child: Row(
-                                    children: [
-                                      Text(
-                                        '${player2.replaceAll(RegExp(r'[\r\n]+'), '')} ${player2Rank.replaceAll(RegExp(r'[\r\n]+'), '')}',
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.w500,
-                                          fontSize: 14.0,
-                                        ),
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      if (!isLive && isPlayer2Winner)
-                                        const Padding(
-                                          padding: EdgeInsets.only(left: 4.0),
-                                          child: Icon(
-                                            Icons.check_circle,
-                                            color: Color(0xFF94E831),
-                                            size: 14.0,
+                              verticalAlignment:
+                                  TableCellVerticalAlignment.middle,
+                              child: Padding(
+                                padding: const EdgeInsets.only(left: 12.0),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.start, // 添加这一行
+                                  crossAxisAlignment: CrossAxisAlignment.center,
+                                  children: [
+                                    if (player2FlagUrl!.isNotEmpty)
+                                      ClipRRect(
+                                        borderRadius: BorderRadius.circular(
+                                            4.0), // 国旗添加圆角
+                                        child: SvgPicture.network(
+                                          player2FlagUrl!,
+                                          width: 22, // 国旗尺寸稍小
+                                          height: 16,
+                                          placeholderBuilder:
+                                              (BuildContext context) =>
+                                                  Container(
+                                            width: 22,
+                                            height: 16,
+                                            color: Colors.grey.withOpacity(0.3),
                                           ),
                                         ),
-                                    ],
-                                  ),
+                                      )
+                                    else
+                                      Container(
+                                          width: 22, // 国旗尺寸稍小
+                                          height: 16,
+                                          decoration: BoxDecoration(
+                                            border: Border.all(
+                                              color: const Color(0xFFD7D9DC),
+                                              width: 1,
+                                            ),
+                                            borderRadius:
+                                                BorderRadius.circular(4),
+                                          ),
+                                          clipBehavior: Clip.hardEdge,
+                                          child: null),
+                                    const SizedBox(width: 6),
+                                    // 添加球员头像
+                                    GestureDetector(
+                                      onTap: () {
+                                        if (player2Id != null) {
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (context) =>
+                                                  PlayerDetailsPage(
+                                                playerId: player2Id!,
+                                                playerName: player2,
+                                                playerCountry: player2Country,
+                                                playerColor:
+                                                    const Color(0xFF94E831),
+                                              ),
+                                            ),
+                                          );
+                                        }
+                                      },
+                                      child: Container(
+                                        width: 28,
+                                        height: 28,
+                                        margin: const EdgeInsets.only(right: 8),
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          border: Border.all(
+                                            color:
+                                                Colors.white.withOpacity(0.2),
+                                            width: 1,
+                                          ),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color:
+                                                  Colors.black.withOpacity(0.2),
+                                              blurRadius: 4,
+                                              offset: const Offset(0, 2),
+                                            ),
+                                          ],
+                                        ),
+                                        child: ClipRRect(
+                                          borderRadius:
+                                              BorderRadius.circular(14),
+                                          child: player2ImageUrl != null &&
+                                                  player2ImageUrl!.isNotEmpty
+                                              ? Image.network(
+                                                  player2ImageUrl!,
+                                                  fit: BoxFit.cover,
+                                                  errorBuilder: (context, error,
+                                                      stackTrace) {
+                                                    return Container(
+                                                      color:
+                                                          Colors.grey.shade800,
+                                                      child: const Icon(
+                                                        Icons.person,
+                                                        color: Colors.white70,
+                                                        size: 16,
+                                                      ),
+                                                    );
+                                                  },
+                                                )
+                                              : Container(
+                                                  color: Colors.grey.shade800,
+                                                  child: const Icon(
+                                                    Icons.person,
+                                                    color: Colors.white70,
+                                                    size: 16,
+                                                  ),
+                                                ),
+                                        ),
+                                      ),
+                                    ),
+                                    Expanded(
+                                      child: Row(
+                                        children: [
+                                          Text(
+                                            '${_formatPlayerName(player2.replaceAll(RegExp(r'[\r\n]+'), ''))} ${player2Rank.replaceAll(RegExp(r'[\r\n]+'), '')}',
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.w500,
+                                              fontSize: 14.0,
+                                            ),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                          if (!isLive && isPlayer2Winner)
+                                            const Padding(
+                                              padding:
+                                                  EdgeInsets.only(left: 4.0),
+                                              child: Icon(
+                                                Icons.check_circle,
+                                                color: Color(0xFF94E831),
+                                                size: 14.0,
+                                              ),
+                                            ),
+                                          if (isLive && serving2)
+                                            Padding(
+                                              padding: const EdgeInsets.only(
+                                                  left: 8.0),
+                                              child: Container(
+                                                width: 12,
+                                                height: 12,
+                                                decoration: const BoxDecoration(
+                                                  color: Color(0xFF94E831),
+                                                  shape: BoxShape.circle,
+                                                ),
+                                                child: const Icon(
+                                                  Icons.sports_tennis,
+                                                  color: Colors.black,
+                                                  size: 8,
+                                                ),
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                              ],
+                              )),
+                          TableCell(
+                            verticalAlignment:
+                                TableCellVerticalAlignment.middle,
+                            child: Container(
+                              alignment: Alignment.centerRight,
+                              padding: const EdgeInsets.only(right: 8.0),
+                              child: isLive
+                                  ? Text(
+                                      currentGameScore2,
+                                      style: const TextStyle(
+                                        color: Color(0xFF94E831),
+                                        fontSize: 14.0,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    )
+                                  : const SizedBox(), // 非直播时为空
                             ),
                           ),
                           TableCell(
+                            verticalAlignment:
+                                TableCellVerticalAlignment.middle,
                             child: Container(
                               alignment: Alignment.centerRight,
                               child: _buildSetScoreWidget(
@@ -324,6 +640,8 @@ class TennisScoreCard extends StatelessWidget {
                             ),
                           ),
                           TableCell(
+                            verticalAlignment:
+                                TableCellVerticalAlignment.middle,
                             child: Container(
                               alignment: Alignment.centerRight,
                               child: _buildSetScoreWidget(
@@ -336,6 +654,8 @@ class TennisScoreCard extends StatelessWidget {
                             ),
                           ),
                           TableCell(
+                            verticalAlignment:
+                                TableCellVerticalAlignment.middle,
                             child: Container(
                               alignment: Alignment.centerRight,
                               child: _buildSetScoreWidget(
@@ -352,64 +672,132 @@ class TennisScoreCard extends StatelessWidget {
                     ],
                   );
                 }),
+                Padding(
+                  padding:
+                      const EdgeInsets.only(left: 12, top: 14.0, bottom: 12.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween, // 两端对齐
+                    children: [
+                      // 左侧显示比赛时间
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.access_time_outlined,
+                            size: 14,
+                            color: Colors.white.withOpacity(0.6),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            matchTime != null && matchTime!.isNotEmpty
+                                ? matchTime!.replaceAll(RegExp(r'[\r\n]+'), '')
+                                : 'To Be Determined',
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.6),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w400,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
 
-                const SizedBox(height: 16.0),
+                      // 右侧显示比赛地点
+                      Row(
+                        children: [
+                          if (stadium != null && stadium!.isNotEmpty)
+                            Image.asset(
+                              'assets/images/icon_stadium.png',
+                              width: 14,
+                              height: 14,
+                              color: Colors.white.withOpacity(0.6),
+                            ),
+                          const SizedBox(width: 4),
+                          Text(
+                            stadium != null && stadium!.isNotEmpty
+                                ? stadium!.replaceAll(RegExp(r'[\r\n]+'), '')
+                                : '',
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.6),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w400,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 0.0),
 
                 // 按钮区域
-                Row(
-                  children: [
-                    // 查看详情按钮
-                    Expanded(
-                      child: TextButton(
-                        onPressed: onDetailPressed,
-                        style: TextButton.styleFrom(
-                          backgroundColor: const Color(0xFF0C0D0C), // 使用深灰色背景
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          foregroundColor: Colors.white.withOpacity(0.7),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                            side: BorderSide(
-                                color: Colors.white.withOpacity(0.1)),
+
+                Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                        12.0, 0.0, 0.0, 0.0), // 添加12像素的边距
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        // 详情按钮
+                        Expanded(
+                          flex: 1, // 占50%宽度
+                          child: TextButton(
+                            onPressed: onDetailPressed,
+                            style: TextButton.styleFrom(
+                              backgroundColor: const Color(0xFF0C0D0C),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              foregroundColor: Colors.white.withOpacity(0.7),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                side: BorderSide(
+                                    color: Colors.white.withOpacity(0.1)),
+                              ),
+                            ),
+                            child: const Center(
+                              child: Text(
+                                'Match detail',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
                           ),
                         ),
-                        child: const Text(
-                          'Match detail',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
+                        const SizedBox(width: 10), // 中间间距10像素
+                        // 观看按钮
+                        Expanded(
+                          flex: 1, // 占50%宽度
+                          child: TextButton(
+                            onPressed: onWatchPressed,
+                            style: TextButton.styleFrom(
+                              backgroundColor: isLive
+                                  ? const Color(0xFF94E831)
+                                  : Color(0xFF0C0D0C),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              foregroundColor: Colors.black,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                side: BorderSide(
+                                    color: Colors.white.withOpacity(0.1)),
+                              ),
+                            ),
+                            child: Center(
+                              child: Text(
+                                'Watch',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: isLive
+                                      ? const Color(0xFF0C0D0C)
+                                      : Colors.white.withOpacity(0.7),
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
                           ),
                         ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    // 观看按钮
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: onWatchPressed,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF94E831),
-                          foregroundColor: Colors.black,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(50),
-                          ),
-                          elevation: 0,
-                        ),
-                        icon: const Icon(
-                          Icons.play_arrow,
-                          size: 16,
-                        ),
-                        label: const Text(
-                          'Watch',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+                      ],
+                    ))
               ],
             ),
           ),
@@ -419,206 +807,6 @@ class TennisScoreCard extends StatelessWidget {
   }
 
   // 根据国家代码获取国旗图片URL
-  String _getFlagImageUrl(String countryCode) {
-    // 使用Unsplash上的国旗图片
-    final Map<String, String> flagUrls = {
-      'ESP':
-          'https://images.unsplash.com/photo-1464790719320-516ecd75af6c?w=32&h=24&fit=crop&auto=format',
-      'ITA':
-          'https://images.unsplash.com/photo-1518730518541-d0843268c287?w=32&h=24&fit=crop&auto=format',
-      'AUS':
-          'https://images.unsplash.com/photo-1624138115358-32823ec13672?w=32&h=24&fit=crop&auto=format',
-      'USA':
-          'https://images.unsplash.com/photo-1520106212299-d99c443e4568?w=32&h=24&fit=crop&auto=format',
-      'GBR':
-          'https://images.unsplash.com/photo-1526659666036-c3baaa2fc3b5?w=32&h=24&fit=crop&auto=format',
-      'FRA':
-          'https://images.unsplash.com/photo-1560363199-a1264d4ea5fc?w=32&h=24&fit=crop&auto=format',
-      'DEU':
-          'https://images.unsplash.com/photo-1527866512907-a35a62a0f6c5?w=32&h=24&fit=crop&auto=format',
-    };
-
-    return flagUrls[countryCode] ??
-        'https://images.unsplash.com/photo-1516906561371-53f48df9fe4c?w=32&h=24&fit=crop&auto=format';
-  }
-
-  Widget _buildPlayerRow(
-    BuildContext context,
-    String name,
-    String country,
-    String rank,
-    bool isServing,
-    String currentScore,
-    List<int> playerScores,
-    List<int> opponentScores,
-    bool isFirstPlayer,
-  ) {
-    final theme = Theme.of(context);
-    final isDarkMode = theme.brightness == Brightness.dark;
-    final textColor = isDarkMode ? Colors.white : Colors.black;
-
-    return Row(
-      children: [
-        // 发球指示器
-        if (isServing)
-          Container(
-            width: 16,
-            height: 16,
-            margin: const EdgeInsets.only(right: 8),
-            decoration: BoxDecoration(
-              color: Colors.transparent,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: const Color(0xFF94E831),
-                width: 1,
-              ),
-            ),
-            child: const Center(
-              child: Icon(
-                Icons.circle,
-                color: Color(0xFF94E831),
-                size: 6,
-              ),
-            ),
-          )
-        else
-          const SizedBox(width: 24),
-
-        // 国旗与球员名称
-        Row(
-          children: [
-            // 国旗
-            Container(
-              width: 24,
-              height: 16,
-              margin: const EdgeInsets.only(right: 8),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(2),
-                border: Border.all(
-                  color: isDarkMode
-                      ? Colors.white.withOpacity(0.2)
-                      : Colors.black.withOpacity(0.1),
-                  width: 0.5,
-                ),
-                image: DecorationImage(
-                  fit: BoxFit.cover,
-                  image:
-                      AssetImage('assets/flags/${country.toLowerCase()}.png'),
-                  onError: (exception, stackTrace) =>
-                      const AssetImage('assets/flags/placeholder.png'),
-                ),
-              ),
-            ),
-
-            // 球员名称和排名
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Text(
-                      name,
-                      style: TextStyle(
-                        color: textColor,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    if (rank.isNotEmpty)
-                      Text(
-                        ' $rank',
-                        style: TextStyle(
-                          color: textColor.withOpacity(0.5),
-                          fontSize: 12,
-                        ),
-                      ),
-                  ],
-                ),
-              ],
-            ),
-          ],
-        ),
-
-        const Spacer(),
-
-        // 比分
-        Row(
-          children: [
-            // 当前局比分
-            Container(
-              width: 30,
-              alignment: Alignment.center,
-              child: Text(
-                currentScore,
-                style: TextStyle(
-                  color: textColor,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-
-            // 横线或破折号 (仅展示一个)
-            if (playerScores.isNotEmpty)
-              Container(
-                width: 15,
-                alignment: Alignment.center,
-                child: Text(
-                  '-',
-                  style: TextStyle(
-                    color: textColor.withOpacity(0.5),
-                    fontSize: 16,
-                    fontWeight: FontWeight.normal,
-                  ),
-                ),
-              ),
-
-            // 第一盘得分
-            if (playerScores.isNotEmpty)
-              Container(
-                width: 25,
-                alignment: Alignment.center,
-                child: Text(
-                  playerScores[0].toString(),
-                  style: TextStyle(
-                    color: textColor,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-
-            // 绿色得分指示器 (如果该球员正在发球)
-            if (isServing)
-              Container(
-                width: 20,
-                height: 20,
-                margin: const EdgeInsets.only(left: 8),
-                alignment: Alignment.center,
-                child: const Text(
-                  'SERVICE',
-                  style: TextStyle(
-                    color: Color(0xFF94E831),
-                    fontSize: 8,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  // 根据网球规则格式化盘分数
-  String _formatSetScore(int playerScore, int opponentScore) {
-    // 如果是抢七
-    if (playerScore >= 6 && opponentScore >= 6) {
-      return playerScore.toString();
-    }
-    // 常规得分
-    return playerScore.toString();
-  }
 
   String formatGameScore(int points) {
     switch (points) {
@@ -687,7 +875,9 @@ class TennisScoreCard extends StatelessWidget {
     // }
 
     // 抢七情况的处理
-    bool isStandardTiebreak = (playerTie != 0 || opponentTie != 0);
+    bool isStandardTiebreak = (playerTie != 0 || opponentTie != 0) ||
+        ((playerScore == 7 && opponentScore == 6) ||
+            (playerScore == 6 && opponentScore == 7));
     bool isExtendedTiebreak = (playerTie > 7 || opponentTie > 7);
 
     // 判断是否显示小分
@@ -706,13 +896,20 @@ class TennisScoreCard extends StatelessWidget {
     }
 
     // 常规情况，直接显示分数
-    return Text(
-      playerScore.toString(),
-      style: const TextStyle(
-        color: Colors.white,
-        fontWeight: FontWeight.bold,
-        fontSize: 15.0,
-      ),
+    return Stack(
+      clipBehavior: Clip.none, // 允许超出父容器
+      alignment: Alignment.center,
+      children: [
+        Text(
+          playerScore.toString(),
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: 15.0,
+          ),
+        ),
+        const SizedBox(height: 16.0),
+      ],
     );
   }
 

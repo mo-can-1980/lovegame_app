@@ -1,7 +1,10 @@
 import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import '../services/api_service.dart';
+import '../utils/constants.dart';
+import 'player_details_page.dart'; // 添加这一行导入
 
 class PlayerRankingsPage extends StatefulWidget {
   const PlayerRankingsPage({super.key});
@@ -14,9 +17,9 @@ class _PlayerRankingsPageState extends State<PlayerRankingsPage> {
   final ApiService _apiService = ApiService();
 
   // 更新颜色以匹配图片中的绿色调
-  final Color _primaryColor = const Color(0xFF4CD964);
+  final Color _primaryColor = const Color(0xFF94E831);
   final Color _secondaryColor = const Color(0xFF121212);
-  final Color _backgroundColor = const Color(0xFF1A1A1A);
+  final Color _backgroundColor = const Color(0xFF121212);
 
   // 添加上升下降颜色
   final Color _upColor = const Color(0xFF4CD964); // 绿色
@@ -59,6 +62,19 @@ class _PlayerRankingsPageState extends State<PlayerRankingsPage> {
     super.dispose();
   }
 
+  String _formatPlayerName(String name) {
+    // 如果名称超过18个字符，按空格分隔，取第一个元素的第一个字母加空格连接最后一个元素
+    if (name.length > 18) {
+      List<String> nameParts = name.split(' ');
+      if (nameParts.length > 1) {
+        String firstName = nameParts.first;
+        String lastName = nameParts.last;
+        return '${firstName[0]}. $lastName';
+      }
+    }
+    return name;
+  }
+
   // 加载球员排名数据
   Future<void> _loadPlayerRankings() async {
     if (_isLoading) return;
@@ -88,23 +104,60 @@ class _PlayerRankingsPageState extends State<PlayerRankingsPage> {
   void _onSearchChanged() {
     if (_debounce?.isActive ?? false) _debounce!.cancel();
 
-    _debounce = Timer(const Duration(milliseconds: 500), () {
+    _debounce = Timer(const Duration(milliseconds: 300), () {
       if (_searchController.text.isEmpty) {
         setState(() {
           _showSearchResults = false;
-          _searchResults = [];
+          _filteredPlayers = List.from(_players); // 恢复原始列表
         });
         return;
       }
 
-      _searchPlayers(_searchController.text);
+      _searchPlayersLocally(_searchController.text);
     });
+  }
+
+  // 本地搜索球员
+  void _searchPlayersLocally(String keyword) {
+    setState(() {
+      _isSearching = true;
+    });
+
+    try {
+      // 在本地列表中搜索
+      final results = _players.where((player) {
+        final name = player['Name'] ?? '';
+        final firstName = player['FirstName'] ?? '';
+        final lastName = player['LastName'] ?? '';
+        final fullName = '$firstName $lastName';
+
+        return name.toLowerCase().contains(keyword.toLowerCase()) ||
+            fullName.toLowerCase().contains(keyword.toLowerCase());
+      }).toList();
+
+      setState(() {
+        if (_showSearchResults) {
+          // 如果显示下拉提示，更新搜索结果
+          _searchResults = results;
+        } else {
+          // 直接更新列表显示
+          _filteredPlayers = results;
+        }
+        _isSearching = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isSearching = false;
+      });
+      print('搜索球员失败: $e');
+    }
   }
 
   // 搜索球员
   Future<void> _searchPlayers(String keyword) async {
     setState(() {
       _isSearching = true;
+      _showSearchResults = true;
     });
 
     try {
@@ -112,7 +165,6 @@ class _PlayerRankingsPageState extends State<PlayerRankingsPage> {
 
       setState(() {
         _searchResults = results;
-        _showSearchResults = true;
         _isSearching = false;
       });
     } catch (e) {
@@ -146,7 +198,7 @@ class _PlayerRankingsPageState extends State<PlayerRankingsPage> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         title: const Text(
-          'Players & Rankings',
+          'Top 250 Ranked Players',
           style: TextStyle(
             color: Colors.white,
             fontSize: 18,
@@ -155,22 +207,22 @@ class _PlayerRankingsPageState extends State<PlayerRankingsPage> {
         ),
         centerTitle: false,
       ),
-      body: Container(
-        // 添加背景渐变效果
-
-        child: Column(
+      body: Stack(children: [
+        Column(
           children: [
-            // 筛选选项
-            _buildFilterOptions(),
-
             // 搜索栏
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Container(
-                height: 48,
+                height: 44, // 减小高度
                 decoration: BoxDecoration(
                   color: const Color(0xFF1E1E1E),
-                  borderRadius: BorderRadius.circular(24),
+                  borderRadius: _showSearchResults
+                      ? const BorderRadius.only(
+                          topLeft: Radius.circular(12),
+                          topRight: Radius.circular(12),
+                        )
+                      : BorderRadius.circular(12), // 减小圆角
                   border: Border.all(
                     color: Colors.white.withOpacity(0.1),
                     width: 0.5,
@@ -180,124 +232,176 @@ class _PlayerRankingsPageState extends State<PlayerRankingsPage> {
                   controller: _searchController,
                   focusNode: _searchFocusNode,
                   decoration: InputDecoration(
-                    hintText: 'Search Player...',
-                    hintStyle: TextStyle(color: Colors.grey[600]),
-                    prefixIcon: const Icon(Icons.search, color: Colors.grey),
+                    hintText: 'Search for players...',
+                    hintStyle: TextStyle(color: Colors.grey[600], fontSize: 14),
+                    prefixIcon:
+                        const Icon(Icons.search, color: Colors.grey, size: 20),
+                    // 添加清除按钮
+                    suffixIcon: _searchController.text.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear,
+                                color: Colors.grey, size: 20),
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() {
+                                _showSearchResults = false;
+                                _filteredPlayers =
+                                    List.from(_players); // 恢复原始列表
+                              });
+                              // 可选：取消焦点
+                              FocusScope.of(context).unfocus();
+                            },
+                          )
+                        : null,
                     border: InputBorder.none,
-                    contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                    contentPadding: const EdgeInsets.symmetric(vertical: 10),
                   ),
-                  style: const TextStyle(color: Colors.white),
+                  style: const TextStyle(color: Colors.white, fontSize: 14),
+                  // 在 TextField 的 onSubmitted 回调中
                   onSubmitted: (value) {
                     setState(() {
                       _showSearchResults = false;
                     });
                     if (value.isNotEmpty) {
-                      _searchPlayers(value);
+                      _searchPlayersLocally(value);
+                    } else {
+                      setState(() {
+                        _filteredPlayers = List.from(_players); // 恢复原始列表
+                      });
                     }
                   },
                 ),
               ),
             ),
 
+            // 筛选选项
+            _buildFilterOptions(),
+
             // 搜索结果下拉列表
             if (_showSearchResults)
-              Container(
-                margin: const EdgeInsets.symmetric(horizontal: 16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1E1E1E),
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.3),
-                      blurRadius: 8,
-                      offset: const Offset(0, 4),
+              Positioned(
+                  top: 52, // 搜索框高度 + 上下 padding
+                  left: 16,
+                  right: 16,
+                  child: Material(
+                    elevation: 8,
+                    borderRadius: const BorderRadius.only(
+                      bottomLeft: Radius.circular(12),
+                      bottomRight: Radius.circular(12),
                     ),
-                  ],
-                ),
-                constraints: const BoxConstraints(maxHeight: 300),
-                child: _isSearching
-                    ? const Center(
-                        child: Padding(
-                          padding: EdgeInsets.all(16.0),
-                          child: CircularProgressIndicator(),
-                        ),
-                      )
-                    : ListView.builder(
-                        shrinkWrap: true,
-                        itemCount: _searchResults.length,
-                        itemBuilder: (context, index) {
-                          final player = _searchResults[index];
-                          return ListTile(
-                            title: Text(
-                              '${player['Name']}',
-                              style: const TextStyle(color: Colors.white),
-                            ),
-                            subtitle: Text(
-                              'Rank #${player['RankNo']}',
-                              style: TextStyle(color: Colors.grey[400]),
-                            ),
-                            leading: CircleAvatar(
-                              backgroundImage: NetworkImage(
-                                player['UrlHeadshotImage'] ??
-                                    'https://via.placeholder.com/40',
+                    child: Container(
+                      width: double.infinity,
+                      margin: EdgeInsets.zero,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1E1E1E),
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.3),
+                            blurRadius: 8,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      constraints: const BoxConstraints(maxHeight: 300),
+                      child: _isSearching
+                          ? const Center(
+                              child: Padding(
+                                padding: EdgeInsets.all(16.0),
+                                child: CircularProgressIndicator(),
                               ),
-                              backgroundColor: Colors.grey[800],
+                            )
+                          : ListView.builder(
+                              shrinkWrap: true,
+                              itemCount: _searchResults.length,
+                              itemBuilder: (context, index) {
+                                final player = _searchResults[index];
+                                return ListTile(
+                                  title: Text(
+                                    '${player['Name']}',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w500,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                  subtitle: Text(
+                                    'Rank #${player['RankNo']}',
+                                    style: const TextStyle(
+                                        color: const Color(0xFF6B6B6B)),
+                                  ),
+                                  leading: CircleAvatar(
+                                    backgroundImage: NetworkImage(
+                                      player['UrlHeadshotImage'] != null &&
+                                              player['UrlHeadshotImage']
+                                                  .toString()
+                                                  .isNotEmpty
+                                          ? player['UrlHeadshotImage']
+                                                  .toString()
+                                                  .startsWith('http')
+                                              ? player['UrlHeadshotImage']
+                                              : 'https://atptour.com${player['UrlHeadshotImage']}'
+                                          : 'https://via.placeholder.com/40',
+                                    ),
+                                    backgroundColor: Colors.grey[800],
+                                  ),
+                                  trailing: player['CountryCode'] != null
+                                      ? Container(
+                                          width: 30,
+                                          height: 20,
+                                          child: _buildCountryFlag(
+                                              player['UrlCountryFlag'],
+                                              player['CountryCode']),
+                                        )
+                                      : null,
+                                  onTap: () {
+                                    setState(() {
+                                      _searchController.text =
+                                          '${player['Name']}';
+                                      _showSearchResults = false;
+                                      // 可以添加导航到球员详情页的逻辑
+                                    });
+
+                                    // 导航到球员详情页
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => PlayerDetailsPage(
+                                          playerId: player['PlayerId'] ?? '',
+                                          playerName: player['Name'] ?? '',
+                                          playerCountry:
+                                              player['CountryCode'] ?? '',
+                                          playerColor: _primaryColor,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                );
+                              },
                             ),
-                            onTap: () {
-                              setState(() {
-                                _searchController.text = '${player['Name']}';
-                                _showSearchResults = false;
-                              });
-                            },
-                          );
+                    ),
+                  )),
+            // 球员列表
+            Expanded(
+              child: RefreshIndicator(
+                onRefresh: _refreshData,
+                color: _primaryColor,
+                child: _isLoading && _players.isEmpty
+                    ? const Center(child: CircularProgressIndicator())
+                    : ListView.builder(
+                        controller: _scrollController,
+                        itemCount: _filteredPlayers.length,
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        itemBuilder: (context, index) {
+                          final player = _filteredPlayers[index];
+                          return _buildPlayerItem(player, index + 1);
                         },
                       ),
               ),
-
-            // 表头
-            _buildTableHeader(),
-
-            // 球员列表
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(20),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.3),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: Colors.white.withOpacity(0.1),
-                          width: 0.5,
-                        ),
-                      ),
-                      child: RefreshIndicator(
-                        onRefresh: _refreshData,
-                        color: const Color(0xFF94E831),
-                        child: _isLoading && _players.isEmpty
-                            ? const Center(child: CircularProgressIndicator())
-                            : ListView.builder(
-                                controller: _scrollController,
-                                itemCount: _filteredPlayers.length,
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 8),
-                                itemBuilder: (context, index) {
-                                  final player = _filteredPlayers[index];
-                                  return _buildPlayerItem(player, index + 1);
-                                },
-                              ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
             ),
           ],
-        ),
-      ),
+        )
+      ]),
     );
   }
 
@@ -305,52 +409,39 @@ class _PlayerRankingsPageState extends State<PlayerRankingsPage> {
   Widget _buildFilterOptions() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Text(
-            'Show:',
-            style: TextStyle(
-              color: Colors.white.withOpacity(0.7),
-              fontSize: 14,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              // ATP 按钮
-              _buildFilterButton('ATP', _showATP, () {
-                setState(() {
-                  _showATP = true;
-                  _showWTA = false;
-                });
-              }),
-              const SizedBox(width: 8),
-              // WTA 按钮
-              _buildFilterButton('WTA', _showWTA, () {
-                setState(() {
-                  _showATP = false;
-                  _showWTA = true;
-                });
-              }),
-              const Spacer(),
-              // Singles 按钮
-              _buildFilterButton('Singles', _showSingles, () {
-                setState(() {
-                  _showSingles = true;
-                  _showDoubles = false;
-                });
-              }),
-              const SizedBox(width: 8),
-              // Doubles 按钮
-              _buildFilterButton('Doubles', _showDoubles, () {
-                setState(() {
-                  _showSingles = false;
-                  _showDoubles = true;
-                });
-              }),
-            ],
-          ),
+          // ATP 按钮
+          _buildFilterButton('ATP', _showATP, () {
+            setState(() {
+              _showATP = true;
+              _showWTA = false;
+            });
+          }),
+          const SizedBox(width: 8),
+          // WTA 按钮
+          _buildFilterButton('WTA', _showWTA, () {
+            setState(() {
+              _showATP = false;
+              _showWTA = true;
+            });
+          }),
+          const Spacer(),
+          // Singles 按钮
+          _buildFilterButton('Singles', _showSingles, () {
+            setState(() {
+              _showSingles = true;
+              _showDoubles = false;
+            });
+          }),
+          const SizedBox(width: 8),
+          // Doubles 按钮
+          _buildFilterButton('Doubles', _showDoubles, () {
+            setState(() {
+              _showSingles = false;
+              _showDoubles = true;
+            });
+          }),
         ],
       ),
     );
@@ -361,90 +452,32 @@ class _PlayerRankingsPageState extends State<PlayerRankingsPage> {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF94E831) : Colors.transparent,
-          borderRadius: BorderRadius.circular(20),
+          color: isSelected ? _primaryColor : Colors.transparent,
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: isSelected
-                ? const Color(0xFF94E831)
-                : Colors.grey.withOpacity(0.3),
+            color: isSelected ? _primaryColor : Colors.grey.withOpacity(0.3),
             width: 1,
           ),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: _primaryColor.withOpacity(0.3),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ]
+              : null,
         ),
         child: Text(
           text,
           style: TextStyle(
             color: isSelected ? Colors.black : Colors.white,
             fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+            fontSize: 13,
           ),
         ),
-      ),
-    );
-  }
-
-  // 构建表头
-  Widget _buildTableHeader() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Row(
-        children: [
-          // Name
-          const SizedBox(width: 16),
-          const Expanded(
-            flex: 3,
-            child: Text(
-              'Name',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-
-          // Rank
-          const Expanded(
-            flex: 1,
-            child: Text(
-              'Rank',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ),
-
-          // Change
-          const Expanded(
-            flex: 1,
-            child: Text(
-              'Change',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ),
-
-          // Country
-          const Expanded(
-            flex: 2,
-            child: Text(
-              'Country',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -452,10 +485,13 @@ class _PlayerRankingsPageState extends State<PlayerRankingsPage> {
   // 构建球员列表项
   Widget _buildPlayerItem(dynamic player, int rank) {
     final String name = player['Name'] ?? '';
+    final String firstName = player['FirstName'] ?? '';
+    final String lastName = player['LastName'] ?? '';
     final String countryCode = player['CountryCode'] ?? '';
     final String points = player['Points'] ?? "";
     final int movement = player['Movement'] ?? 0;
     final String urlCountryFlag = player['UrlCountryFlag'] ?? '';
+    final String urlHeadshotImage = player['UrlHeadshotImage'] ?? '';
 
     // 确定排名变化的颜色和图标
     Color movementColor = _neutralColor;
@@ -468,134 +504,224 @@ class _PlayerRankingsPageState extends State<PlayerRankingsPage> {
       movementIcon = Icons.arrow_drop_down;
     }
 
-    return Container(
-      decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(
-            color: Colors.white.withOpacity(0.1),
-            width: 0.5,
+    return GestureDetector(
+      onTap: () {
+        // 导航到球员详情页
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => PlayerDetailsPage(
+              playerId: player['PlayerId'] ?? '',
+              playerName: name.isNotEmpty ? name : '$lastName $firstName',
+              playerCountry: countryCode,
+              playerColor: _primaryColor,
+            ),
+          ),
+        );
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(
+              color: Colors.white.withOpacity(0.1),
+              width: 0.5,
+            ),
           ),
         ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-        child: Row(
-          children: [
-            // Name
-            const SizedBox(width: 16),
-            Expanded(
-              flex: 3,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    name,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '$points',
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.7),
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // Rank
-            Expanded(
-              flex: 1,
-              child: Text(
-                '#$rank',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+          child: Row(
+            children: [
+              // 头像
+              CircleAvatar(
+                radius: 20,
+                backgroundImage: NetworkImage(
+                  urlHeadshotImage.isNotEmpty
+                      ? urlHeadshotImage.startsWith('http')
+                          ? urlHeadshotImage
+                          : 'https://atptour.com$urlHeadshotImage'
+                      : 'https://via.placeholder.com/40',
                 ),
-                textAlign: TextAlign.center,
+                backgroundColor: Colors.grey[800],
               ),
-            ),
+              const SizedBox(width: 12),
 
-            // Change
-            Expanded(
-              flex: 1,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    movementIcon,
-                    color: movementColor,
-                    size: 16,
-                  ),
-                  Text(
-                    movement == 0 ? '0' : movement.abs().toString(),
-                    style: TextStyle(
-                      color: movementColor,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
+              // 姓名和积分
+              Expanded(
+                flex: 3,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          name.isNotEmpty
+                              ? _formatPlayerName(
+                                  name.replaceAll(RegExp(r'[\r\n]+'), ''))
+                              : _formatPlayerName('$lastName $firstName'
+                                  .replaceAll(RegExp(r'[\r\n]+'), '')),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        Text(
+                          '$points',
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.7),
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ),
 
-            // Country Flag & Code
-            Expanded(
-              flex: 2,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // 国旗图片
-                  Container(
-                    width: 24,
-                    height: 16,
-                    margin: const EdgeInsets.only(right: 8),
-                    decoration: BoxDecoration(
-                      image: DecorationImage(
-                        image: NetworkImage(urlCountryFlag),
-                        fit: BoxFit.cover,
-                        onError: (exception, stackTrace) => const AssetImage(
-                            'assets/images/flags/placeholder.png'),
-                      ),
-                      borderRadius: BorderRadius.circular(2),
-                      border: Border.all(
-                        color: Colors.white.withOpacity(0.2),
-                        width: 0.5,
+              // Rank 和排名变动
+              SizedBox(
+                width: 60,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Text(
+                      '#$rank',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
                       ),
                     ),
-                  ),
-                  // 国家代码
-                  Text(
-                    countryCode,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
+                    const SizedBox(width: 4),
+                    // 排名变动指示器
+                    if (movement != 0)
+                      Icon(
+                        movementIcon,
+                        color: movementColor,
+                        size: 12,
+                      )
+                    else
+                      const Icon(
+                        Icons.remove,
+                        color: Color(0xFF6B6B6B),
+                        size: 12,
+                      ),
+                    Text(
+                      movement != 0 ? '${movement.abs()}' : '',
+                      style: TextStyle(
+                        color: movement != 0
+                            ? movementColor
+                            : const Color(0xFF6B6B6B),
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
+              const SizedBox(width: 16),
+
+              // Country Flag & Code
+              Container(
+                width: 80,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    // 国旗图片
+                    _buildCountryFlag(urlCountryFlag, countryCode),
+                    const SizedBox(width: 8),
+                    // 国家代码
+                    Text(
+                      countryCode,
+                      style: const TextStyle(
+                        color: Color(0xFF6B6B6B),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  // 构建加载指示器
-  Widget _buildLoadingIndicator() {
+  // 构建国旗
+  Widget _buildCountryFlag(String? flagUrl, String countryCode) {
+    if (flagUrl != null && flagUrl.isNotEmpty) {
+      if (flagUrl.toLowerCase().endsWith('.svg')) {
+        // 处理SVG格式的国旗
+        try {
+          final String fullUrl = flagUrl.startsWith('http')
+              ? flagUrl
+              : 'https://atptour.com$flagUrl';
+          return SvgPicture.network(
+            fullUrl,
+            width: 22,
+            height: 16,
+            placeholderBuilder: (BuildContext context) => Container(
+              width: 22,
+              height: 16,
+              color: Colors.grey[800],
+            ),
+          );
+        } catch (e) {
+          print('加载SVG失败: $e');
+        }
+      }
+
+      // 处理其他格式的国旗
+      return Container(
+        width: 22,
+        height: 16,
+        decoration: BoxDecoration(
+          image: DecorationImage(
+            image: NetworkImage(
+              flagUrl.startsWith('http')
+                  ? flagUrl
+                  : 'https://atptour.com$flagUrl',
+            ),
+            fit: BoxFit.cover,
+          ),
+          borderRadius: BorderRadius.circular(2),
+          border: Border.all(
+            color: Colors.white.withOpacity(0.2),
+            width: 0.5,
+          ),
+        ),
+      );
+    }
+
+    // 如果没有国旗URL，显示国家代码的第一个字母
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 16),
+      width: 22,
+      height: 16,
+      decoration: BoxDecoration(
+        color: Color(0xFF6B6B6B),
+        borderRadius: BorderRadius.circular(2),
+        border: Border.all(
+          color: Colors.white.withOpacity(0.2),
+          width: 0.5,
+        ),
+      ),
       alignment: Alignment.center,
-      child: CircularProgressIndicator(
-        color: _primaryColor,
-        strokeWidth: 2,
+      child: Text(
+        countryCode.isNotEmpty ? countryCode[0] : '',
+        style: const TextStyle(
+          color: Color(0xFF6B6B6B),
+          fontSize: 8,
+          fontWeight: FontWeight.w500,
+        ),
       ),
     );
   }

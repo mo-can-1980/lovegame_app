@@ -45,7 +45,6 @@ class _TournamentCalendarPageState extends State<TournamentCalendarPage>
     _currentMonth = DateTime.now();
     _updateCalendarData();
     _loadTournamentsFromAsset();
-    _testCORS(); // Add CORS test
 
     // Initialize year list (2 years before and after current year)
     final currentYear = DateTime.now().year;
@@ -135,49 +134,7 @@ class _TournamentCalendarPageState extends State<TournamentCalendarPage>
         // Note: In a production environment, you should use your own backend service to proxy requests to avoid CORS issues
         // Here we try a different URL format, or consider using a proxy service
         print('Starting ATP tournament data request...');
-        final response = await http.get(
-          Uri.parse('https://www.atptour.com/en/-/tournaments/calendar/tour'),
-          headers: {
-            'Accept': 'application/json',
-            'User-Agent':
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-          },
-        ).timeout(const Duration(seconds: 10)); // Add timeout limit
-
-        print('API response status code: ${response.statusCode}');
-
-        if (response.statusCode == 200) {
-          // Successfully retrieved API data
-          data = json.decode(response.body);
-          print(
-              'Successfully retrieved tournament data from API, data length: ${response.body.length}');
-
-          // If not web platform, save to local cache
-          if (!kIsWeb) {
-            try {
-              final directory = await getApplicationDocumentsDirectory();
-              final file = File('${directory.path}/atp_tournaments.json');
-              await file.writeAsString(response.body);
-              print('Data saved to local cache');
-            } catch (e) {
-              print('Failed to save to local cache: $e');
-            }
-          }
-        } else {
-          // Print detailed error information
-          print('API request failed, status code: ${response.statusCode}');
-          print('Response headers: ${response.headers}');
-
-          // Try to print response content, may contain error information
-          if (response.body.isNotEmpty) {
-            print(
-                'Response content: ${response.body.length > 500 ? response.body.substring(0, 500) + "..." : response.body}');
-          } else {
-            print('Response content is empty');
-          }
-
-          throw Exception('API request failed: ${response.statusCode}');
-        }
+        data = await _loadFromAsset();
       } catch (e) {
         print('Failed to retrieve data from API: $e');
         print('Error type: ${e.runtimeType}');
@@ -487,7 +444,8 @@ class _TournamentCalendarPageState extends State<TournamentCalendarPage>
         //   ),
         //   centerTitle: false,
         // ),
-        body: Container(
+        body: SafeArea(
+            child: Container(
           decoration: BoxDecoration(
             color: _secondaryColor,
           ),
@@ -496,7 +454,7 @@ class _TournamentCalendarPageState extends State<TournamentCalendarPage>
               : _showCalendar
                   ? _buildCalendarView()
                   : _buildPlayListView(),
-        ));
+        )));
   }
 
   // Calendar view
@@ -623,7 +581,8 @@ class _TournamentCalendarPageState extends State<TournamentCalendarPage>
     }
 
     // Use high-quality tournament images and SVG resources consistently
-    const String backgroundImage = 'assets/images/madrid.webp';
+    final String tournamentImage = tournament['TournamentImage'] ??
+        'https://images.unsplash.com/photo-1595435934249-5df7ed86e1c0?q=80&w=1920&auto=format&fit=crop';
     const String atp250Svg = 'assets/images/categorystamps_250.png';
     const String atp500Svg = 'assets/images/categorystamps_500.png';
     const String atpMasterSvg = 'assets/images/categorystamps_1000.png';
@@ -705,7 +664,7 @@ class _TournamentCalendarPageState extends State<TournamentCalendarPage>
       color: _secondaryColor,
       elevation: 12,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(8),
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -713,19 +672,38 @@ class _TournamentCalendarPageState extends State<TournamentCalendarPage>
         child: Stack(
           children: [
             // Background image
-            Image.asset(
-              backgroundImage,
-              height: 240,
-              width: double.infinity,
+            Image.network(
+              tournamentImage,
               fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) => Container(
-                height: 240,
-                color: _secondaryColor,
-                child: Center(
-                  child: Icon(Icons.image_not_supported,
-                      color: Colors.grey[700], size: 50),
-                ),
-              ),
+              loadingBuilder: (context, child, loadingProgress) {
+                if (loadingProgress == null) return child;
+                // 加载中显示黑色背景
+                return Container(
+                  color: const Color.fromARGB(255, 75, 75, 75),
+                  child: Center(
+                    child: CircularProgressIndicator(
+                      value: loadingProgress.expectedTotalBytes != null
+                          ? loadingProgress.cumulativeBytesLoaded /
+                              loadingProgress.expectedTotalBytes!
+                          : null,
+                      valueColor: AlwaysStoppedAnimation<Color>(_primaryColor),
+                    ),
+                  ),
+                );
+              },
+              errorBuilder: (context, error, stackTrace) {
+                // 图片加载失败时显示黑色背景
+                return Container(
+                  color: Colors.black,
+                  child: Center(
+                    child: Icon(
+                      Icons.sports_tennis,
+                      color: Colors.white.withOpacity(0.3),
+                      size: 48,
+                    ),
+                  ),
+                );
+              },
             ),
             // Gradient overlay
             Container(
@@ -735,9 +713,9 @@ class _TournamentCalendarPageState extends State<TournamentCalendarPage>
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [
-                    Colors.black.withOpacity(0.3),
-                    Colors.black.withOpacity(0.6),
-                    Colors.black.withOpacity(0.9),
+                    Colors.black.withOpacity(0.2),
+                    Colors.black.withOpacity(0.5),
+                    Colors.black.withOpacity(0.8),
                   ],
                   stops: const [0.2, 0.6, 0.9],
                 ),
@@ -774,7 +752,7 @@ class _TournamentCalendarPageState extends State<TournamentCalendarPage>
                           shadows: [
                             Shadow(
                               blurRadius: 4,
-                              color: Colors.black,
+                              color: Color.fromARGB(255, 27, 27, 27),
                               offset: Offset(0, 1),
                             ),
                           ],
@@ -956,16 +934,6 @@ class _TournamentCalendarPageState extends State<TournamentCalendarPage>
                               : FontWeight.normal,
                         ),
                       ),
-                      if (_showCalendar)
-                        Container(
-                          height: 2,
-                          width: 160,
-                          margin: const EdgeInsets.only(top: 4),
-                          decoration: BoxDecoration(
-                            color: _primaryColor,
-                            borderRadius: BorderRadius.circular(1),
-                          ),
-                        ),
                     ],
                   ),
                 ),

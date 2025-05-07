@@ -8,6 +8,7 @@ import '../components/empty_matches_placeholder.dart';
 import '../components/loading_indicator.dart';
 import 'tournament_calendar_page.dart';
 import '../services/api_service.dart';
+import 'match_details_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -40,7 +41,7 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    final formatter = DateFormat('E, d MMMM, yyyy');
+    final formatter = DateFormat('E, dd MMMM, yyyy');
     setState(() {
       _selectedDateStr = formatter.format(DateTime.now());
     });
@@ -55,7 +56,7 @@ class _HomePageState extends State<HomePage> {
     super.dispose();
   }
 
-  Future<List<String>> _findCurrentTournamentsScoresUrls() async {
+  Future<List<Map<String, dynamic>>> _findCurrentTournamentsScoresUrls() async {
     List<String> scoresUrls = [];
     try {
       // 加载本地比赛数据
@@ -77,22 +78,13 @@ class _HomePageState extends State<HomePage> {
               _currentTournaments.add(tournament);
               if (tournament.containsKey('ScoresUrl')) {
                 scoresUrls.add(tournament['ScoresUrl']);
-
-                // 更新比赛地点信息
-                if (_tournamentLocation.isEmpty &&
-                    tournament.containsKey('Location')) {
-                  setState(() {
-                    _tournamentLocation = tournament['Location'];
-                  });
-                }
               }
             }
           }
         }
       }
-
       debugPrint('找到的比赛URL: $scoresUrls');
-      return scoresUrls;
+      return _currentTournaments;
     } catch (e) {
       debugPrint('查找当前比赛URL时出错: $e');
       return [];
@@ -185,30 +177,10 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
-  void _updateDisplayedCompletedMatches() {
-    setState(() {
-      if (_selectedDateStr.isNotEmpty &&
-          _completedMatchesByDate.containsKey(_selectedDateStr)) {
-        _displayedCompletedMatches = _completedMatchesByDate[_selectedDateStr]!;
-      } else {
-        _displayedCompletedMatches = [];
-      }
-      _matches.clear();
-      // 先添加直播比赛
-      if (_liveMatches.isNotEmpty) {
-        _matches.addAll(_liveMatches);
-      }
-      // 再添加已完成比赛
-      if (_displayedCompletedMatches.isNotEmpty) {
-        _matches.addAll(_displayedCompletedMatches);
-      }
-    });
-  }
-
   // 日期选择回调
   void _onDateSelected(DateTime date) {
     // 将日期转换为与API返回格式相匹配的字符串
-    final formatter = DateFormat('E, d MMMM, yyyy');
+    final formatter = DateFormat('E, dd MMMM, yyyy');
     final dateStr = formatter.format(date);
 
     setState(() {
@@ -242,11 +214,14 @@ class _HomePageState extends State<HomePage> {
         try {
           final liveMatches =
               await ApiService.getLiveTournamentData(tournamentId);
+
           if (liveMatches is List) {
-            allLiveMatches.addAll(ApiService.parseMatchesData(liveMatches));
+            allLiveMatches
+                .addAll(ApiService.parseMatchesData(liveMatches, tournamentId));
           } else if (liveMatches is Map) {
             // 处理返回单个比赛数据的情况
-            allLiveMatches.addAll(ApiService.parseMatchesData(liveMatches));
+            allLiveMatches
+                .addAll(ApiService.parseMatchesData(liveMatches, tournamentId));
           }
         } catch (e) {
           print('获取直播比赛数据失败，tournamentId: $tournamentId, 错误: $e');
@@ -296,8 +271,8 @@ class _HomePageState extends State<HomePage> {
 
       // 从当前比赛中提取直播ID
       for (var tournament in _currentTournaments) {
-        if (tournament.containsKey('TournamentId')) {
-          liveIds.add(tournament['TournamentId'].toString());
+        if (tournament.containsKey('Id')) {
+          liveIds.add(tournament['Id'].toString());
         }
       }
 
@@ -325,9 +300,11 @@ class _HomePageState extends State<HomePage> {
         // 如果找到了比赛URL，依次获取每个比赛的数据并合并
         _completedMatchesByDate = {};
 
-        for (String url in scoresUrls) {
-          final matchesData = await ApiService.getATPMatchesResultData(url);
+        for (var url in scoresUrls) {
+          final matchesData = await ApiService.getATPMatchesResultData(
+              url['ScoresUrl'], url['Name']);
           // 合并数据
+
           matchesData.forEach((date, matches) {
             if (_completedMatchesByDate.containsKey(date)) {
               _completedMatchesByDate[date]!.addAll(matches);
@@ -364,13 +341,19 @@ class _HomePageState extends State<HomePage> {
             _matches.add({
               'player1': match['player1'] ?? '',
               'player2': match['player2'] ?? '',
-              'player1Rank': '', // ATP数据中可能没有排名信息
-              'player2Rank': '',
+              'player1Rank': match['player1Rank'] ?? '', // ATP数据中可能没有排名信息
+              'player2Rank': match['player2Rank'] ?? '',
               'player1Country': match['player1Country'] ?? '',
               'player2Country': match['player2Country'] ?? '',
+              'player1FlagUrl': match['player1FlagUrl'] ?? '',
+              'player2FlagUrl': match['player2FlagUrl'] ?? '',
+              'player2ImageUrl': match['player2ImageUrl'] ?? '',
+              'player1ImageUrl': match['player1ImageUrl'] ?? '',
               'serving1': false,
               'serving2': false,
               'roundInfo': match['roundInfo'] ?? '',
+              'stadium': match['stadium'] ?? '',
+              'matchTime': match['matchTime'] ?? '',
               'player1SetScores': set1Scores,
               'player2SetScores': set2Scores,
               'player1TiebreakScores': player1TiebreakScores,
@@ -379,10 +362,13 @@ class _HomePageState extends State<HomePage> {
               'currentGameScore2': '',
               'isPlayer1Winner': match['isPlayer1Winner'], // 添加获胜者标识
               'isPlayer2Winner': match['isPlayer2Winner'],
-              'matchType': 'completed'
+              'matchType': 'completed',
+              'tournamentName': match['tournamentName'] ?? '',
+              'matchId': match['matchId'] ?? '',
+              'tournamentId': match['tournamentId'] ?? '',
+              'year': match['year'] ?? '',
             });
           }
-          _tournamentLocation = '马德里, 西班牙';
           _noMoreData = false;
         }
         _displayedCompletedMatches = _matches;
@@ -404,7 +390,7 @@ class _HomePageState extends State<HomePage> {
     if (_isLoading || _noMoreData) return;
 
     setState(() {
-      _isLoading = true;
+      _isLoading = false;
     });
   }
 
@@ -428,6 +414,9 @@ class _HomePageState extends State<HomePage> {
 
       // 3. 最后添加已完成比赛（优先级最低）
       final completedMatches = _completedMatchesByDate[_selectedDateStr] ?? [];
+      debugPrint(
+          ' _updateDisplayedMatches ${_selectedDateStr}----${completedMatches.length}');
+
       if (completedMatches.isNotEmpty) {
         _displayedCompletedMatches = completedMatches;
         _matches.addAll(_displayedCompletedMatches);
@@ -463,43 +452,31 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black, // 设置背景色为黑色，确保底部过渡平滑
+
       body: Stack(
         children: [
-          // 主内容部分（底部黑色背景）
-          Positioned.fill(
-            child: Column(
-              children: [
-                // 上半部分为透明（banner区域）
-                const SizedBox(height: 260),
-                // 下半部分为内容区域
-                Expanded(
-                  child: Container(
-                    decoration: const BoxDecoration(
-                      color: Colors.black,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
           // 背景图片容器
           Positioned(
             top: 0,
             left: 0,
             right: 0,
-            height: 260, // 高度增加到300，底部部分会被圆角裁剪
+            height: MediaQuery.of(context).size.height / 3 +
+                120, // 高度增加到300，底部部分会被圆角裁剪
             child: ClipRRect(
               borderRadius: const BorderRadius.vertical(
-                bottom: Radius.circular(30),
+                bottom: Radius.circular(20),
               ),
               child: Stack(
                 children: [
                   // 背景图片
-                  Positioned.fill(
+                  Container(
+                    width: double.infinity,
+                    height: double.infinity,
                     child: Image.network(
                       'https://images.unsplash.com/photo-1595435934249-5df7ed86e1c0?q=80&w=1920&auto=format&fit=crop',
                       fit: BoxFit.cover,
+                      width: double.infinity,
+                      height: double.infinity,
                       loadingBuilder: (context, child, loadingProgress) {
                         if (loadingProgress == null) return child;
                         return Container(
@@ -539,12 +516,31 @@ class _HomePageState extends State<HomePage> {
                           end: Alignment.bottomCenter,
                           colors: [
                             Colors.black.withOpacity(0.1),
-                            Colors.black.withOpacity(0.3),
+                            Colors.black.withOpacity(0.4),
                             Colors.black.withOpacity(0.5),
                           ],
                           stops: const [0.0, 0.7, 1.0],
                         ),
                       ),
+                    ),
+                  ),
+                  // 在背景图片底部添加日历组件
+                  Positioned(
+                    bottom: 10, //
+                    left: 0,
+                    right: 0,
+                    child: TennisCalendar(
+                      selectedDate: selectedDate,
+                      onDateSelected: (date) {
+                        _onDateSelected(date);
+                        // final formatter = DateFormat('E, d MMMM, yyyy');
+                        // setState(() {
+                        //   selectedDate = date;
+                        //   _selectedDateStr = formatter.format(date);
+                        // });
+                        // 重新加载该日期的比赛
+                        // _onRefresh();
+                      },
                     ),
                   ),
                 ],
@@ -557,74 +553,41 @@ class _HomePageState extends State<HomePage> {
             child: Column(
               children: [
                 // 顶部栏
-                const Padding(
-                  padding: EdgeInsets.symmetric(
+                Padding(
+                  padding: const EdgeInsets.symmetric(
                     horizontal: 16.0,
                     vertical: 8.0,
                   ),
                   child: Row(
-                    mainAxisAlignment: MainAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
+                      const Text(
                         'Tennis',
                         style: TextStyle(
                           color: Colors.white,
-                          fontSize: 20,
+                          fontSize: 24,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                    ],
-                  ),
-                ),
-
-                // 日历组件
-                TennisCalendar(
-                  selectedDate: selectedDate,
-                  onDateSelected: (date) {
-                    _onDateSelected(date);
-                    final formatter = DateFormat('E, d MMMM, yyyy');
-                    setState(() {
-                      selectedDate = date;
-                      _selectedDateStr = formatter.format(date);
-                    });
-                    // 重新加载该日期的比赛
-                    // _onRefresh();
-                  },
-                ),
-
-                // 地点信息
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.location_on,
-                        color: Colors.white,
-                        size: 16,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        _tournamentLocation.isNotEmpty
-                            ? _tournamentLocation
-                            : 'Location not available',
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(0.8),
-                          fontSize: 14,
-                        ),
+                      GlassIconButton(
+                        icon: Icons.settings,
+                        onPressed: () {
+                          // 设置按钮点击事件
+                        },
                       ),
                     ],
                   ),
                 ),
 
-                const SizedBox(height: 16),
+                SizedBox(height: MediaQuery.of(context).size.height / 3 + 30),
 
                 // 比赛列表
                 Expanded(
                   child: Container(
-                    decoration: BoxDecoration(
+                    decoration: const BoxDecoration(
                       color: Colors.black,
                     ),
-                    margin: const EdgeInsets.only(top: 16),
+                    margin: const EdgeInsets.only(top: 0),
                     child: RefreshIndicator(
                       onRefresh: _onRefresh,
                       color: Theme.of(context).primaryColor,
@@ -648,29 +611,59 @@ class _HomePageState extends State<HomePage> {
                                             .onSurface
                                             .withOpacity(0.5),
                                       ),
-                                      SizedBox(height: 16),
+                                      const SizedBox(height: 16),
                                       Text(
                                         _errorMessage.isNotEmpty
                                             ? _errorMessage
-                                            : 'No matches currently in progress',
+                                            : 'No matches ',
                                         style: TextStyle(
                                           color: Colors.white.withOpacity(0.7),
                                           fontSize: 16,
                                         ),
                                       ),
                                       SizedBox(height: 24),
-                                      ElevatedButton(
-                                        onPressed: _onRefresh,
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor:
-                                              Theme.of(context).primaryColor,
-                                          foregroundColor: Theme.of(context)
-                                              .colorScheme
-                                              .onPrimary,
-                                          padding: EdgeInsets.symmetric(
-                                              horizontal: 24, vertical: 12),
+                                      Container(
+                                        decoration: BoxDecoration(
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                          gradient: const LinearGradient(
+                                            colors: [
+                                              Color(0xFF94E831),
+                                              Color(0xFF7BC721)
+                                            ],
+                                            begin: Alignment.topLeft,
+                                            end: Alignment.bottomRight,
+                                          ),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: const Color(0xFF94E831)
+                                                  .withOpacity(0.3),
+                                              blurRadius: 8,
+                                              offset: const Offset(0, 4),
+                                            ),
+                                          ],
                                         ),
-                                        child: Text('Refresh'),
+                                        child: ElevatedButton(
+                                          onPressed: _onRefresh,
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: Colors.transparent,
+                                            foregroundColor: Colors.black,
+                                            elevation: 0,
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 32, vertical: 8),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                            ),
+                                          ),
+                                          child: const Text(
+                                            'Refresh',
+                                            style: TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ),
                                       ),
                                     ],
                                   ),
@@ -682,47 +675,114 @@ class _HomePageState extends State<HomePage> {
                                   itemCount: _matches.length + 1,
                                   itemBuilder: (context, index) {
                                     if (index == _matches.length) {
-                                      return LoadingIndicator(
-                                        isLoading: _isLoading,
-                                        noMoreData: _noMoreData,
+                                      // 显示底部加载状态或"没有更多数据"消息
+                                      return Container(
+                                        padding: const EdgeInsets.all(16.0),
+                                        alignment: Alignment.center,
+                                        child: _isLoading
+                                            ? const CircularProgressIndicator(
+                                                valueColor:
+                                                    AlwaysStoppedAnimation<
+                                                        Color>(Colors.white),
+                                              )
+                                            : _noMoreData
+                                                ? const Text(
+                                                    'No more match',
+                                                    style: TextStyle(
+                                                      color: Colors.grey,
+                                                      fontSize: 14.0,
+                                                    ),
+                                                  )
+                                                : const SizedBox.shrink(),
+                                      );
+                                    } else {
+                                      final match = _matches[index];
+                                      debugPrint('item ===== :${match}');
+                                      return TennisScoreCard(
+                                        player1: match['player1'] ?? '',
+                                        player2: match['player2'] ?? '',
+                                        player1Rank: match['player1Rank'] ?? '',
+                                        player2Rank: match['player2Rank'] ?? '',
+                                        player1Country:
+                                            match['player1Country'] ?? '',
+                                        player2Country:
+                                            match['player2Country'] ?? '',
+                                        player2FlagUrl:
+                                            match['player2FlagUrl'] ?? '',
+                                        player1FlagUrl:
+                                            match['player1FlagUrl'] ?? '',
+                                        player1ImageUrl:
+                                            match['player1ImageUrl'] ?? '',
+                                        player2ImageUrl:
+                                            match['player2ImageUrl'] ?? '',
+                                        serving1: match['serving1'] ?? false,
+                                        serving2: match['serving2'] ?? false,
+                                        roundInfo: match['roundInfo'] ?? '',
+                                        set1Scores: List<int>.from(
+                                            match['player1SetScores'] ?? []),
+                                        set2Scores: List<int>.from(
+                                            match['player2SetScores'] ?? []),
+                                        tiebreak1: List<int>.from(
+                                            match['player1TiebreakScores'] ??
+                                                []),
+                                        tiebreak2: List<int>.from(
+                                            match['player2TiebreakScores'] ??
+                                                []),
+                                        currentGameScore1:
+                                            match['currentGameScore1'] ?? '',
+                                        currentGameScore2:
+                                            match['currentGameScore2'] ?? '',
+                                        isLive: match['isLive'] ?? false,
+                                        matchDuration:
+                                            match['matchDuration'] ?? '',
+                                        isPlayer1Winner:
+                                            match['isPlayer1Winner'] ?? false,
+                                        isPlayer2Winner:
+                                            match['isPlayer2Winner'] ?? false,
+                                        matchType: match['matchType'] ?? false,
+                                        stadium: match['stadium'] ?? '',
+                                        matchTime: match['matchTime'] ?? '',
+                                        tournamentName:
+                                            match['tournamentName'] ?? '',
+                                        player1Id: match['player1Id'] ?? '',
+                                        player2Id: match['player2Id'] ?? '',
+                                        onDetailPressed: () {
+                                          if (match['matchType'] ==
+                                              'Scheduled') {
+                                            // 使用SnackBar提示比赛未开始
+                                            ScaffoldMessenger.of(context)
+                                                .showSnackBar(
+                                              SnackBar(
+                                                content: Text(
+                                                  '${match['player1']} vs ${match['player2']} match has not started yet',
+                                                  style: const TextStyle(
+                                                      color: Colors.white),
+                                                ),
+                                                backgroundColor:
+                                                    const Color(0xFF333333),
+                                                duration:
+                                                    const Duration(seconds: 2),
+                                              ),
+                                            );
+                                          } else {
+                                            Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (context) =>
+                                                    MatchDetailsPage(
+                                                  matchId:
+                                                      match['matchId'] ?? '',
+                                                  tournamentId:
+                                                      match['tournamentId'] ??
+                                                          '',
+                                                  year: match['year'] ?? '',
+                                                ),
+                                              ),
+                                            );
+                                          }
+                                        },
                                       );
                                     }
-
-                                    final match = _matches[index];
-                                    debugPrint('item ===== :${match}');
-                                    return TennisScoreCard(
-                                      player1: match['player1'] ?? '',
-                                      player2: match['player2'] ?? '',
-                                      player1Rank: match['player1Rank'] ?? '',
-                                      player2Rank: match['player2Rank'] ?? '',
-                                      player1Country:
-                                          match['player1Country'] ?? '',
-                                      player2Country:
-                                          match['player2Country'] ?? '',
-                                      serving1: match['serving1'] ?? false,
-                                      serving2: match['serving2'] ?? false,
-                                      roundInfo: match['roundInfo'] ?? '',
-                                      set1Scores: List<int>.from(
-                                          match['player1SetScores'] ?? []),
-                                      set2Scores: List<int>.from(
-                                          match['player2SetScores'] ?? []),
-                                      tiebreak1: List<int>.from(
-                                          match['player1TiebreakScores'] ?? []),
-                                      tiebreak2: List<int>.from(
-                                          match['player2TiebreakScores'] ?? []),
-                                      currentGameScore1:
-                                          match['currentGameScore1'] ?? '',
-                                      currentGameScore2:
-                                          match['currentGameScore2'] ?? '',
-                                      isLive: match['isLive'] ?? false,
-                                      matchDuration:
-                                          match['matchDuration'] ?? '',
-                                      isPlayer1Winner:
-                                          match['isPlayer1Winner'] ?? false,
-                                      isPlayer2Winner:
-                                          match['isPlayer2Winner'] ?? false,
-                                      matchType: match['matchType'] ?? false,
-                                    );
                                   },
                                 ),
                     ),
@@ -730,7 +790,7 @@ class _HomePageState extends State<HomePage> {
                 ),
               ],
             ),
-          ),
+          )
         ],
       ),
     );

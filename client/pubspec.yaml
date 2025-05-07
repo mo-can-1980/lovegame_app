@@ -1,4 +1,4 @@
-name: lovegame
+name: LoveGame
 description: A Flutter application for tracking tennis matches.
 publish_to: 'none'
 version: 1.0.0+1
@@ -19,6 +19,8 @@ dependencies:
   path_provider: ^2.1.1
   flutter_svg: ^2.1.0
   html: ^0.15.4
+  cached_network_image: ^3.4.1
+  url_launcher: ^6.1.10
 
 dev_dependencies:
   flutter_test:

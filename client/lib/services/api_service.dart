@@ -5,13 +5,13 @@
  * @version: 1.0
  * @Date: 2025-04-21 17:22:17
  * @LastEditors: ouchao
- * @LastEditTime: 2025-04-25 14:51:06
+ * @LastEditTime: 2025-05-07 18:10:07
  */
 import 'package:html/parser.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:io';
-import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode, kIsWeb;
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:html/dom.dart' as dom;
@@ -21,7 +21,7 @@ class ApiService {
   static const List<String> _proxyUrls = [
     // 'https://api.allorigins.win/raw?url=',
     // 'https://cors-anywhere.herokuapp.com/',
-    // 'https://cors.sh/',
+    // 'https://cors.sh/?url=',
     'https://thingproxy.freeboard.io/fetch/',
     // 'https://cors.io/?'
   ];
@@ -48,7 +48,8 @@ class ApiService {
       }
     } else {
       // 移动平台直接请求
-      return Uri.parse(_baseUrl + endpoint);
+      final String fullUrls = _baseUrl + endpoint;
+      return Uri.parse(_currentProxyUrl + Uri.encodeComponent(fullUrls));
     }
   }
 
@@ -103,10 +104,12 @@ class ApiService {
           // 解析比赛的开始和结束日期
           final startDate = DateTime.parse(tournament['startDate']);
           final endDate = DateTime.parse(tournament['endDate']);
-          print("$startDate ==== $endDate");
+          if (kDebugMode) {
+            print('$startDate ==== $endDate');
+          }
           // 检查当前日期是否在比赛日期范围内
           if (now.isAfter(startDate) &&
-              now.isBefore(endDate.add(Duration(days: 1)))) {
+              now.isBefore(endDate.add(const Duration(days: 1)))) {
             currentTournaments.add(tournament);
           }
         }
@@ -171,6 +174,7 @@ class ApiService {
               document.getElementsByClassName('tournament-day');
           final dateHeader = tournamentDays[0].getElementsByTagName('h4');
           String dateStr = '';
+
           // 直接获取h4的文本内容，但排除其中的span标签内容
           for (var node in dateHeader.first.nodes) {
             if (node is dom.Text) {
@@ -189,10 +193,25 @@ class ApiService {
             if (!matchesByDate.containsKey(dateStr)) {
               matchesByDate[dateStr] = [];
             }
+            final String dateTime =
+                scheduleItem.attributes['data-datetime'] ?? '';
+            final String displayTime =
+                scheduleItem.attributes['data-displaytime'] ?? '';
+            final String matchDate =
+                scheduleItem.attributes['data-matchdate'] ?? '';
+            final String suffix = scheduleItem.attributes['data-suffix'] ?? '';
+            debugPrint(
+                '解析比赛时间: $dateTime, 解析显示时间: $displayTime, 解析比赛日期: $matchDate, 解析后缀: $suffix');
             final matchType = scheduleItem.getElementsByClassName('match-type');
+            final score =
+                scheduleItem.getElementsByClassName('schedule-cta-score');
             if (matchType.isNotEmpty) {
               continue;
             }
+            if (score.isNotEmpty && score.first.text.trim() != '–––') {
+              continue;
+            }
+
             // 获取比赛时间
             final locationTimestamp = scheduleItem
                 .getElementsByClassName('schedule-location-timestamp');
@@ -235,7 +254,11 @@ class ApiService {
                 schedulePlayers.first.getElementsByClassName('opponent');
 
             if (players.isEmpty || opponents.isEmpty) continue;
-
+            final isDouble = players.first
+                .getElementsByClassName('names'); // 检查是否是双打比赛shuang'g
+            if (isDouble.isNotEmpty) {
+              continue;
+            }
             // 获取球员1信息
             final player1Element = players.first;
             String player1Name = '';
@@ -253,7 +276,7 @@ class ApiService {
                 .getElementsByClassName('rank')
                 .first
                 .getElementsByTagName('span');
-           
+
             if (player1RankElements.isNotEmpty) {
               player1Rank = player1RankElements.first.text
                   .trim()
@@ -268,6 +291,43 @@ class ApiService {
                         .trim()
                         .replaceAll(RegExp(r'[\r\n]+'), '')
                     : '';
+            String player1FlagUrl = '';
+            if (player1Element.getElementsByClassName('atp-flag').isNotEmpty) {
+              final flagElement =
+                  player1Element.getElementsByClassName('atp-flag').first;
+              if (flagElement.getElementsByTagName('use').isNotEmpty) {
+                final useElement =
+                    flagElement.getElementsByTagName('use').first;
+                String flagHref = useElement.attributes['href'] ?? '';
+                if (flagHref.isNotEmpty) {
+                  // 按照-分割，获取最后一个元素作为国家代码
+                  List<String> parts = flagHref.split('-');
+                  if (parts.isNotEmpty) {
+                    String countryCode = parts.last;
+                    // 构建完整的国旗URL
+                    player1FlagUrl =
+                        'https://www.atptour.com/-/media/images/flags/$countryCode.svg';
+                  } else {
+                    // 如果分割后为空，使用原始URL
+                    player1FlagUrl = 'https://www.atptour.com$flagHref';
+                  }
+                }
+              }
+            }
+            String player1ImageUrl = '';
+            final player1ImageElements =
+                player1Element.getElementsByClassName('player-image');
+            if (player1ImageElements.isNotEmpty) {
+              final srcAttr = player1ImageElements.first.attributes['src'];
+              if (srcAttr != null && srcAttr.isNotEmpty) {
+                // 如果src是相对路径，添加基础URL
+                if (srcAttr.startsWith('/')) {
+                  player1ImageUrl = 'https://www.atptour.com$srcAttr';
+                } else {
+                  player1ImageUrl = srcAttr;
+                }
+              }
+            }
 
             // 获取球员2信息
             final player2Element = opponents.first;
@@ -298,21 +358,57 @@ class ApiService {
                         .text
                         .trim()
                     : '';
-
+            String player2FlagUrl = '';
+            if (player2Element.getElementsByClassName('atp-flag').isNotEmpty) {
+              final flagElement =
+                  player2Element.getElementsByClassName('atp-flag').first;
+              if (flagElement.getElementsByTagName('use').isNotEmpty) {
+                final useElement =
+                    flagElement.getElementsByTagName('use').first;
+                String flagHref = useElement.attributes['href'] ?? '';
+                if (flagHref.isNotEmpty) {
+                  // 按照-分割，获取最后一个元素作为国家代码
+                  List<String> parts = flagHref.split('-');
+                  if (parts.isNotEmpty) {
+                    String countryCode = parts.last;
+                    // 构建完整的国旗URL
+                    player2FlagUrl =
+                        'https://www.atptour.com/-/media/images/flags/$countryCode.svg';
+                  } else {
+                    // 如果分割后为空，使用原始URL
+                    player2FlagUrl = 'https://www.atptour.com$flagHref';
+                  }
+                }
+              }
+            }
+            String player2ImageUrl = '';
+            final player2ImageElements =
+                player2Element.getElementsByClassName('player-image');
+            if (player2ImageElements.isNotEmpty) {
+              final srcAttr = player2ImageElements.first.attributes['src'];
+              if (srcAttr != null && srcAttr.isNotEmpty) {
+                // 如果src是相对路径，添加基础URL
+                if (srcAttr.startsWith('/')) {
+                  player2ImageUrl = 'https://www.atptour.com$srcAttr';
+                } else {
+                  player2ImageUrl = srcAttr;
+                }
+              }
+            }
             // 7. 构建比赛数据，与现有格式保持一致
             final matchData = {
-              'roundInfo': round.toString() +
-                  ' ' +
-                  courtInfo.toString() +
-                  ' ' +
-                  matchTime.toString(),
-              'matchTime': matchTime,
+              'roundInfo': round,
+              'matchTime': displayTime,
               'player1': player1Name,
               'player2': player2Name,
               'player1Rank': player1Rank,
               'player2Rank': player2Rank,
               'player1Country': player1Country,
               'player2Country': player2Country,
+              'player1FlagUrl': player1FlagUrl,
+              'player2FlagUrl': player2FlagUrl,
+              'player1ImageUrl': player1ImageUrl,
+              'player2ImageUrl': player2ImageUrl,
               // 使用新的存储格式，对于未开始的比赛，设置默认值
               'player1SetScores': [0, 0, 0],
               'player2SetScores': [0, 0, 0],
@@ -323,7 +419,8 @@ class ApiService {
               'isPlayer1Winner': false, // 添加获胜者标识
               'isPlayer2Winner': false,
               'courtInfo': courtInfo, // 添加获胜者标识
-              'matchType': "unmatch"
+              'matchType': 'unmatch',
+              'tournamentName': tournament['Name'],
             };
             // 添加到对应日期的比赛列表
             matchesByDate[dateStr]!.add(matchData);
@@ -369,39 +466,84 @@ class ApiService {
 
   // 解析比赛数据为应用内部格式
   static List<Map<String, dynamic>> parseMatchesData(
-      Map<String, dynamic> apiData) {
+      Map<String, dynamic> apiData, String tId) {
     List<Map<String, dynamic>> matches = [];
-
+    debugPrint('parseMatchesData!!!!!!!!!!!${apiData}');
     try {
       if (apiData.containsKey('LiveMatches') &&
           apiData['LiveMatches'] is List) {
         final liveMatches = apiData['LiveMatches'];
         final tournamentName = apiData['EventTitle'] ?? '';
+        final tournamentId = tId;
         final location =
             '${apiData['EventCity'] ?? ''}, ${apiData['EventCountry'] ?? ''}';
 
         for (var match in liveMatches) {
-          if (match['Type'] == 'singles') {
+          if (!match['IsDoubles']) {
             // 只处理单打比赛
-            final playerTeam = match['PlayerTeam'];
-            final opponentTeam = match['OpponentTeam'];
+            final playerTeam = match['PlayerTeam'] ?? {};
+            final opponentTeam = match['OpponentTeam'] ?? {};
+
+            // 获取球员信息
+            final player1 = playerTeam['Player'] ?? {};
+            final player2 = opponentTeam['Player'] ?? {};
+
+            // 构建球员头像URL
+            String player1ImageUrl = '';
+            String player2ImageUrl = '';
+
+            if (playerTeam.containsKey('PlayerHeadshotUrl')) {
+              player1ImageUrl =
+                  'https://www.atptour.com${playerTeam['PlayerHeadshotUrl'].toString().toLowerCase()}';
+            }
+
+            if (opponentTeam.containsKey('PlayerHeadshotUrl')) {
+              player2ImageUrl =
+                  'https://www.atptour.com${opponentTeam['PlayerHeadshotUrl'].toString().toLowerCase()}';
+            }
+
+            // 构建国旗URL
+            String player1FlagUrl = '';
+            String player2FlagUrl = '';
+
+            if (player1.containsKey('PlayerCountry')) {
+              final countryCode = player1['PlayerCountry'] ?? '';
+              if (countryCode.isNotEmpty) {
+                player1FlagUrl =
+                    'https://www.atptour.com/-/media/images/flags/${countryCode.toLowerCase()}.svg';
+              }
+            }
+
+            if (player2.containsKey('PlayerCountry')) {
+              final countryCode = player2['PlayerCountry'] ?? '';
+              if (countryCode.isNotEmpty) {
+                player2FlagUrl =
+                    'https://www.atptour.com/-/media/images/flags/${countryCode.toLowerCase()}.svg';
+              }
+            }
 
             // 构建比赛数据
             Map<String, dynamic> matchData = {
               'player1':
-                  '${playerTeam['Player']['PlayerFirstName']} ${playerTeam['Player']['PlayerLastName']}',
+                  '${player1['PlayerFirstName'] ?? ''} ${player1['PlayerLastName'] ?? ''}',
               'player2':
-                  '${opponentTeam['Player']['PlayerFirstName']} ${opponentTeam['Player']['PlayerLastName']}',
+                  '${player2['PlayerFirstName'] ?? ''} ${player2['PlayerLastName'] ?? ''}',
               'player1Rank':
                   playerTeam['Seed'] != null ? '(${playerTeam['Seed']})' : '',
               'player2Rank': opponentTeam['Seed'] != null
                   ? '(${opponentTeam['Seed']})'
                   : '',
-              'player1Country': playerTeam['Player']['PlayerCountry'] ?? '',
-              'player2Country': opponentTeam['Player']['PlayerCountry'] ?? '',
+              'player1Country': player1['PlayerCountry'] ?? '',
+              'player2Country': player2['PlayerCountry'] ?? '',
+              'player1FlagUrl': player1FlagUrl,
+              'player2FlagUrl': player2FlagUrl,
+              'player1ImageUrl': player1ImageUrl,
+              'player2ImageUrl': player2ImageUrl,
               'serving1': match['ServerTeam'] == 0,
               'serving2': match['ServerTeam'] == 1,
               'roundInfo': match['RoundName'] ?? '',
+              'stadium': match['CourtName'] ?? '',
+              'matchTime': match['MatchTimeTotal'] ?? '',
               'tournamentName': tournamentName,
               'location': location,
               'matchStatus': match['MatchStatus'] ?? '',
@@ -415,11 +557,17 @@ class ApiService {
                   _extractTiebreakScores(playerTeam['SetScores']),
               'player2TiebreakScores':
                   _extractTiebreakScores(opponentTeam['SetScores']),
-              'isPlayer1Winner': false, // 添加获胜者标识
-              'isPlayer2Winner': false,
-              'matchType': 'live'
+              'isPlayer1Winner': match['MatchStatus'] == 'F' &&
+                  _isWinner(playerTeam['SetScores']),
+              'isPlayer2Winner': match['MatchStatus'] == 'F' &&
+                  _isWinner(opponentTeam['SetScores']),
+              'matchType': 'live',
+              'isLive': true,
+              'matchId': match['MatchId'] ?? '',
+              'tournamentId': tournamentId,
+              'year': '2025',
             };
-
+            debugPrint('api获取直播比赛数据 $matchData $tournamentId');
             matches.add(matchData);
           }
         }
@@ -431,6 +579,20 @@ class ApiService {
     return matches;
   }
 
+  // 判断是否为获胜者
+  static bool _isWinner(List<dynamic>? setScores) {
+    if (setScores == null || setScores.isEmpty) return false;
+
+    int setsWon = 0;
+    for (var set in setScores) {
+      if (set['IsWinner'] == true) {
+        setsWon++;
+      }
+    }
+
+    return setsWon >= 2; // 网球比赛通常是三盘两胜制
+  }
+
   // 提取局分
   static List<int> _extractSetScores(List<dynamic>? setScores) {
     List<int> scores = [];
@@ -438,9 +600,10 @@ class ApiService {
       for (var set in setScores) {
         if (set['SetScore'] != null) {
           scores.add(set['SetScore']);
-        } else {
-          scores.add(0);
         }
+        // } else {
+        //   scores.add(0);
+        // }
       }
     }
     // 确保至少有3个元素
@@ -471,28 +634,29 @@ class ApiService {
 
   // 获取当前局比分
   static String _getCurrentGameScore(dynamic gameScore) {
-    if (gameScore == null) return '0';
+    return gameScore.toString();
+    // if (gameScore == null) return '0';
 
-    switch (gameScore.toString()) {
-      case '0':
-        return '0';
-      case '1':
-        return '15';
-      case '2':
-        return '30';
-      case '3':
-        return '40';
-      case '4':
-        return 'A';
-      default:
-        return '0';
-    }
+    // switch (gameScore.toString()) {
+    //   case '0':
+    //     return '0';
+    //   case '1':
+    //     return '15';
+    //   case '2':
+    //     return '30';
+    //   case '3':
+    //     return '40';
+    //   case '4':
+    //     return 'A';
+    //   default:
+    //     return '0';
+    // }
   }
 
   // 获取ATP球员排名
   Future<List<dynamic>> getPlayerRankings() async {
     try {
-      const String endpoint = '/en/-/www/rank/sglroll/100?v=1';
+      const String endpoint = '/en/-/www/rank/sglroll/250?v=1';
       final Uri uri = _buildUri(endpoint);
 
       final response = await http.get(
@@ -543,7 +707,7 @@ class ApiService {
   }
 
   static Future<Map<String, List<Map<String, dynamic>>>>
-      getATPMatchesResultData(String? scoresUrl) async {
+      getATPMatchesResultData(String? scoresUrl, String? name) async {
     Map<String, List<Map<String, dynamic>>> matchesByDate = {};
     try {
       final String? endpoint = scoresUrl;
@@ -592,8 +756,13 @@ class ApiService {
             final matchHeader =
                 matchElement.getElementsByClassName('match-header').first;
             final headerSpans = matchHeader.getElementsByTagName('span');
-            final String round =
-                headerSpans.isNotEmpty ? headerSpans[0].text.trim() : '';
+            final arrRound = headerSpans.first.text.split('-');
+            String round = '';
+            String Stadium = '';
+            if (arrRound.length > 1) {
+              round = arrRound[0].trim();
+              Stadium = arrRound[1].trim();
+            }
             final String matchTime =
                 headerSpans.length > 1 ? headerSpans[1].text.trim() : '';
 
@@ -602,19 +771,62 @@ class ApiService {
                 matchElement.getElementsByClassName('match-content').first;
             final statsItems =
                 matchContent.getElementsByClassName('stats-item');
+            final matchCta = matchElement.getElementsByClassName('match-cta');
+            String VarmatchId = "";
+            String VartournamentId = "";
+            String Varyear = "";
+            if (matchCta.isNotEmpty) {
+              final links = matchCta.first.getElementsByTagName('a');
+              if (links.length >= 2) {
+                final detailLink = links[1].attributes['href'];
+                if (detailLink != null && detailLink.isNotEmpty) {
+                  // 解析链接获取 year, tournamentId, matchId
+                  final segments = detailLink.split('/');
+                  if (segments.length >= 3) {
+                    final matchId = segments.last;
+                    final tournamentId = segments[segments.length - 2];
+                    final year = segments[segments.length - 3];
+                    // 添加到比赛数据中
+                    VarmatchId = matchId;
+                    VartournamentId = tournamentId;
+                    Varyear = year;
+                  }
+                }
+              }
+            }
             if (statsItems.length >= 2) {
               // 检查哪位球员是获胜者
-              final win1 = statsItems[0].getElementsByClassName('win');
-              final win2 = statsItems[1].getElementsByClassName('win');
+              final win1 = statsItems[0].getElementsByClassName('winner');
+              final win2 = statsItems[1].getElementsByClassName('winner');
 
-              final isPlayer1Winner = win1.isNotEmpty;
-              final isPlayer2Winner = win2.isNotEmpty;
+              final isPlayer1Winner = win1.isNotEmpty == true;
+              final isPlayer2Winner = win2.isNotEmpty == true;
 
               // 获取第一个选手信息
               final player1Info =
                   statsItems[0].getElementsByClassName('player-info').first;
-              final player1Name =
-                  player1Info.getElementsByClassName('name').first.text.trim();
+              final player1NameLink = player1Info
+                  .getElementsByClassName('name')
+                  .first
+                  .getElementsByTagName('a');
+              var player1Name = '';
+              var player1Rank = '';
+              if (player1NameLink.isNotEmpty) {
+                player1Name = player1NameLink.first.text
+                    .trim()
+                    .replaceAll(RegExp(r'[\r\n]+'), '');
+              }
+              final player1RankObj = player1Info
+                  .getElementsByClassName('name')
+                  .first
+                  .getElementsByTagName('span')
+                  .first
+                  .text
+                  .trim();
+              if (player1RankObj.isNotEmpty) {
+                player1Rank = player1RankObj;
+              }
+              // 获取第一个选手的国家
               final player1Country =
                   player1Info.getElementsByClassName('atp-flag').isNotEmpty
                       ? player1Info
@@ -623,12 +835,69 @@ class ApiService {
                               .attributes['data-country'] ??
                           ''
                       : '';
-
+              String player1FlagUrl = '';
+              if (player1Info.getElementsByClassName('atp-flag').isNotEmpty) {
+                final flagElement =
+                    player1Info.getElementsByClassName('atp-flag').first;
+                if (flagElement.getElementsByTagName('use').isNotEmpty) {
+                  final useElement =
+                      flagElement.getElementsByTagName('use').first;
+                  if (useElement.attributes.containsKey('href')) {
+                    String flagHref = useElement.attributes['href'] ?? '';
+                    if (flagHref.isNotEmpty) {
+                      // 按照-分割，获取最后一个元素作为国家代码
+                      List<String> parts = flagHref.split('-');
+                      if (parts.isNotEmpty) {
+                        String countryCode = parts.last;
+                        // 构建完整的国旗URL
+                        player1FlagUrl =
+                            'https://www.atptour.com/-/media/images/flags/$countryCode.svg';
+                      } else {
+                        // 如果分割后为空，使用原始URL
+                        player1FlagUrl = 'https://www.atptour.com$flagHref';
+                      }
+                    }
+                  }
+                }
+              }
+              String player1ImageUrl = '';
+              final player1ImageElements =
+                  player1Info.getElementsByClassName('player-image');
+              if (player1ImageElements.isNotEmpty) {
+                final srcAttr = player1ImageElements.first.attributes['src'];
+                if (srcAttr != null && srcAttr.isNotEmpty) {
+                  // 如果src是相对路径，添加基础URL
+                  if (srcAttr.startsWith('/')) {
+                    player1ImageUrl = 'https://www.atptour.com$srcAttr';
+                  } else {
+                    player1ImageUrl = srcAttr;
+                  }
+                }
+              }
               // 获取第二个选手信息
               final player2Info =
                   statsItems[1].getElementsByClassName('player-info').first;
-              final player2Name =
-                  player2Info.getElementsByClassName('name').first.text.trim();
+              final player2NameLink = player2Info
+                  .getElementsByClassName('name')
+                  .first
+                  .getElementsByTagName('a');
+              var player2Name = '';
+              var player2Rank = '';
+              if (player2NameLink.isNotEmpty) {
+                player2Name = player2NameLink.first.text
+                    .trim()
+                    .replaceAll(RegExp(r'[\r\n]+'), '');
+              }
+              final player2RankObj = player2Info
+                  .getElementsByClassName('name')
+                  .first
+                  .getElementsByTagName('span')
+                  .first
+                  .text
+                  .trim();
+              if (player2RankObj.isNotEmpty) {
+                player2Rank = player2RankObj;
+              }
               final player2Country =
                   player2Info.getElementsByClassName('atp-flag').isNotEmpty
                       ? player2Info
@@ -637,7 +906,45 @@ class ApiService {
                               .attributes['data-country'] ??
                           ''
                       : '';
-
+// 获取球员2国旗图片URL
+              String player2FlagUrl = '';
+              if (player2Info.getElementsByClassName('atp-flag').isNotEmpty) {
+                final flagElement =
+                    player2Info.getElementsByClassName('atp-flag').first;
+                if (flagElement.getElementsByTagName('use').isNotEmpty) {
+                  final useElement =
+                      flagElement.getElementsByTagName('use').first;
+                  String flagHref = useElement.attributes['href'] ?? '';
+                  if (flagHref.isNotEmpty) {
+                    // 按照-分割，获取最后一个元素作为国家代码
+                    List<String> parts = flagHref.split('-');
+                    if (parts.isNotEmpty) {
+                      String countryCode = parts.last;
+                      // 构建完整的国旗URL
+                      player2FlagUrl =
+                          'https://www.atptour.com/-/media/images/flags/$countryCode.svg';
+                    } else {
+                      // 如果分割后为空，使用原始URL
+                      player2FlagUrl = 'https://www.atptour.com$flagHref';
+                    }
+                  }
+                }
+              }
+              // 获取球员2头像
+              String player2ImageUrl = '';
+              final player2ImageElements =
+                  player2Info.getElementsByClassName('player-image');
+              if (player2ImageElements.isNotEmpty) {
+                final srcAttr = player2ImageElements.first.attributes['src'];
+                if (srcAttr != null && srcAttr.isNotEmpty) {
+                  // 如果src是相对路径，添加基础URL
+                  if (srcAttr.startsWith('/')) {
+                    player2ImageUrl = 'https://www.atptour.com$srcAttr';
+                  } else {
+                    player2ImageUrl = srcAttr;
+                  }
+                }
+              }
               // 获取比分信息
               final scores1 = statsItems[0].getElementsByClassName('scores');
               final scores2 = statsItems[1].getElementsByClassName('scores');
@@ -707,11 +1014,18 @@ class ApiService {
               // 创建比赛数据对象时添加获胜者信息
               final matchData = {
                 'roundInfo': round,
+                'stadium': Stadium,
                 'matchTime': matchTime,
                 'player1': player1Name,
                 'player2': player2Name,
+                'player1Rank': player1Rank,
+                'player2Rank': player2Rank,
                 'player1Country': player1Country,
                 'player2Country': player2Country,
+                'player1FlagUrl': player1FlagUrl,
+                'player2FlagUrl': player2FlagUrl,
+                'player1ImageUrl': player1ImageUrl,
+                'player2ImageUrl': player2ImageUrl,
                 // 使用新的存储格式
                 'player1SetScores': player1SetScores,
                 'player2SetScores': player2SetScores,
@@ -721,6 +1035,11 @@ class ApiService {
                 'matchDuration': matchTime,
                 'isPlayer1Winner': isPlayer1Winner, // 添加获胜者标识
                 'isPlayer2Winner': isPlayer2Winner, // 添加获胜者标识
+                'matchType': 'completed',
+                'tournamentName': name,
+                'matchId': VarmatchId,
+                'tournamentId': VartournamentId,
+                'year': Varyear,
               };
               matchesByDate[dateStr]!.add(matchData);
             }
@@ -732,5 +1051,185 @@ class ApiService {
     }
 
     return matchesByDate;
+  }
+
+  // 获取球员详情数据
+  static Future<Map<String, dynamic>> getPlayerDetails(String playerId) async {
+    try {
+      final String endpoint = '/en/-/www/players/hero/$playerId?v=1';
+      final Uri uri = _buildUri(endpoint);
+
+      final response = await http.get(
+        uri,
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent':
+              'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        },
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        throw Exception('获取球员数据失败: ${response.statusCode}');
+      }
+    } catch (e) {
+      debugPrint('获取球员详情异常: $e');
+      // 如果API调用失败，尝试加载本地数据
+      return loadLocalPlayerData();
+    }
+  }
+
+  // 加载本地球员数据
+  static Future<Map<String, dynamic>> loadLocalPlayerData() async {
+    try {
+      final String jsonString =
+          await rootBundle.loadString('assets/player.json');
+      return json.decode(jsonString);
+    } catch (e) {
+      debugPrint('加载本地球员数据失败: $e');
+      return {};
+    }
+  }
+
+  // 获取比赛统计数据
+  static Future<Map<String, dynamic>> getMatchStats(
+      String year, String tournamentId, String matchId) async {
+    try {
+      final String endpoint =
+          '/-/Hawkeye/MatchStats/Complete/$year/$tournamentId/$matchId';
+      final Uri uri = _buildUri(endpoint);
+
+      final response = await http.get(
+        uri,
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent':
+              'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        },
+      ).timeout(const Duration(seconds: 10));
+
+      debugPrint('getMatchStats status: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        try {
+          // 尝试解析为JSON
+          return json.decode(response.body);
+        } catch (e) {
+          // 如果不是JSON格式，可能是HTML，需要解析HTML
+          debugPrint('解析比赛统计数据失败，尝试解析HTML: $e');
+          return _parseMatchStatsHtml(response.body);
+        }
+      } else {
+        throw Exception('获取比赛统计数据失败: ${response.statusCode}');
+      }
+    } catch (e) {
+      debugPrint('获取比赛统计数据异常: $e');
+      // 如果API调用失败，返回模拟数据用于UI展示
+      return _getMockMatchStats();
+    }
+  }
+
+  // 解析比赛统计数据HTML
+  static Map<String, dynamic> _parseMatchStatsHtml(String htmlBody) {
+    try {
+      final document = parse(htmlBody);
+
+      // 提取球员信息
+      final playerElements = document.querySelectorAll('.player-name');
+      List<Map<String, String>> players = [];
+
+      for (var element in playerElements) {
+        final name = element.text.trim();
+        final country =
+            element.parent?.querySelector('.player-country')?.text.trim() ?? '';
+        players.add({
+          'name': name,
+          'country': country,
+        });
+      }
+
+      // 提取比分信息
+      final scoreElements = document.querySelectorAll('.set-score');
+      List<Map<String, int>> sets = [];
+
+      for (int i = 0; i < scoreElements.length; i += 2) {
+        if (i + 1 < scoreElements.length) {
+          sets.add({
+            'player1': int.tryParse(scoreElements[i].text.trim()) ?? 0,
+            'player2': int.tryParse(scoreElements[i + 1].text.trim()) ?? 0,
+          });
+        }
+      }
+
+      // 提取统计数据
+      final statsRows = document.querySelectorAll('.stats-row');
+      Map<String, dynamic> player1Stats = {};
+      Map<String, dynamic> player2Stats = {};
+
+      for (var row in statsRows) {
+        final statName = row.querySelector('.stat-name')?.text.trim() ?? '';
+        final player1Value = double.tryParse(row
+                    .querySelector('.player1-value')
+                    ?.text
+                    .trim()
+                    .replaceAll('%', '') ??
+                '0') ??
+            0.0;
+        final player2Value = double.tryParse(row
+                    .querySelector('.player2-value')
+                    ?.text
+                    .trim()
+                    .replaceAll('%', '') ??
+                '0') ??
+            0.0;
+
+        player1Stats[statName] = player1Value;
+        player2Stats[statName] = player2Value;
+      }
+
+      return {
+        'players': players,
+        'score': {'sets': sets},
+        'stats': {
+          'player1': player1Stats,
+          'player2': player2Stats,
+        },
+      };
+    } catch (e) {
+      debugPrint('解析HTML失败: $e');
+      return _getMockMatchStats();
+    }
+  }
+
+  // 获取模拟比赛统计数据（当API调用失败时使用）
+  static Map<String, dynamic> _getMockMatchStats() {
+    return {
+      'players': [
+        {'name': 'Ashleigh Barty', 'country': 'Australia'},
+        {'name': 'Iga Swiatek', 'country': 'Poland'},
+      ],
+      'score': {
+        'sets': [
+          {'player1': 7, 'player2': 5},
+          {'player1': 0, 'player2': 1},
+          {'player1': 2, 'player2': 5},
+        ],
+      },
+      'stats': {
+        'player1': {
+          'firstServePercentage': 52.0,
+          'pointsWonPercentage': 61.0,
+          'firstServePointsWonPercentage': 52.0,
+          'secondServePointsWonPercentage': 32.0,
+        },
+        'player2': {
+          'firstServePercentage': 67.0,
+          'pointsWonPercentage': 42.0,
+          'firstServePointsWonPercentage': 24.0,
+          'secondServePointsWonPercentage': 36.0,
+        },
+      },
+    };
   }
 }

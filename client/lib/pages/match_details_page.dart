@@ -1,0 +1,1421 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'player_details_page.dart'; // 添加导入球员详情页面
+
+class MatchDetailsPage extends StatefulWidget {
+  final Map<String, dynamic>? matchData;
+  final String? matchId;
+  final String? tournamentId;
+  final String? year;
+  final String? player1ImageUrl;
+  final String? player2ImageUrl;
+  final String? player1FlagUrl;
+  final String? player2FlagUrl;
+
+  const MatchDetailsPage(
+      {Key? key,
+      this.matchData,
+      this.matchId,
+      this.tournamentId,
+      this.year,
+      this.player1ImageUrl,
+      this.player2ImageUrl,
+      this.player1FlagUrl,
+      this.player2FlagUrl})
+      : assert(matchData != null ||
+            (matchId != null && tournamentId != null && year != null)),
+        super(key: key);
+
+  @override
+  State<MatchDetailsPage> createState() => _MatchDetailsPageState();
+}
+
+class _MatchDetailsPageState extends State<MatchDetailsPage>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+  bool _isLoading = false;
+  String _errorMessage = '';
+  Map<String, dynamic>? _matchData;
+  int _currentStatsPage = 0;
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+
+    // 如果直接传入了比赛数据，则直接使用
+    if (widget.matchData != null) {
+      _matchData = widget.matchData;
+    } else {
+      // 否则从API加载数据
+      _loadMatchData();
+    }
+
+    // 打印传入的URL参数
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  // 从API加载比赛数据
+  Future<void> _loadMatchData() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = '';
+    });
+    debugPrint(
+        'widget.matchId: ${widget.matchId}, widget.tournamentId: ${widget.tournamentId}, widget.year: ${widget.year}');
+    try {
+      final year = widget.year ?? '2025';
+      final tournamentId = widget.tournamentId ?? '1536';
+      final matchId = widget.matchId ?? 'ms011';
+
+      final url =
+          'https://www.atptour.com/-/Hawkeye/MatchStats/$year/$tournamentId/$matchId';
+      final response = await http.get(Uri.parse(url));
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        setState(() {
+          _matchData = data;
+          _isLoading = false;
+        });
+      } else {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = '加载失败: HTTP ${response.statusCode}';
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+        _errorMessage = '加载失败: $e';
+      });
+    }
+  }
+
+  String _formatPlayerName(String name) {
+    // 如果名称超过16个字符，按空格分隔，取第一个元素的第一个字母加空格连接最后一个元素
+    if (name.length > 13) {
+      List<String> nameParts = name.split(' ');
+      if (nameParts.length > 1) {
+        String firstName = nameParts.first;
+        String lastName = nameParts.last;
+        return '${firstName[0]}. $lastName';
+      }
+    }
+    return name;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return Scaffold(
+        backgroundColor: Colors.black,
+        appBar: AppBar(
+          backgroundColor: Colors.black,
+          title: const Text('Match Details'),
+          elevation: 0,
+        ),
+        body: const Center(
+          child: CircularProgressIndicator(
+            color: Color(0xFF94E831),
+          ),
+        ),
+      );
+    }
+
+    // 显示错误状态
+    if (_errorMessage.isNotEmpty) {
+      return Scaffold(
+        backgroundColor: Colors.black,
+        appBar: AppBar(
+          backgroundColor: Colors.black,
+          title: const Text('Match Details'),
+          elevation: 0,
+        ),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.error_outline,
+                color: Colors.red,
+                size: 48,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                _errorMessage,
+                style: const TextStyle(color: Colors.white),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton(
+                onPressed: _loadMatchData,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF94E831),
+                  foregroundColor: Colors.black,
+                ),
+                child: const Text('重试'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // 如果没有数据
+    if (_matchData == null) {
+      return Scaffold(
+        backgroundColor: Colors.black,
+        appBar: AppBar(
+          backgroundColor: Colors.black,
+          title: const Text('Match Details'),
+          elevation: 0,
+        ),
+        body: const Center(
+          child: Text(
+            'No Match Details',
+            style: TextStyle(color: Colors.white),
+          ),
+        ),
+      );
+    }
+
+    final tournament = _matchData!['Tournament'] ?? {};
+    final match = _matchData!['Match'] ?? {};
+
+    // 比赛基本信息
+    final location = tournament['TournamentCity'] ?? '';
+    final country = tournament['EventCountry'] ?? '';
+    final titleName = tournament['TournamentName'] ?? '';
+    final RoundName = match['RoundName'] ?? '';
+    final isLive = match['MatchStatus'] == 'L'; // 'L'表示直播，'F'表示已完成
+
+    // 球员信息
+    final playerTeam = match['PlayerTeam'];
+    final opponentTeam = match['OpponentTeam'];
+
+    // 球员1信息
+    final player1 = playerTeam['Player'] ?? {};
+    final player2 = opponentTeam['Player'] ?? {};
+    final player1FirstName = player1['PlayerFirstName'] ?? '';
+    final player1LastName = player1['PlayerLastName'] ?? '';
+    final player1Id = player1['PlayerId'] ?? '';
+    final player2Id = player2['PlayerId'] ?? '';
+    String extractedPlayer1Country = '';
+    if (widget.player1FlagUrl != null && widget.player1FlagUrl!.isNotEmpty) {
+      final uri = Uri.parse(widget.player1FlagUrl!);
+      final pathSegments = uri.pathSegments;
+      if (pathSegments.isNotEmpty) {
+        final lastSegment = pathSegments.last;
+        // 移除.svg后缀并转换为大写以匹配国家代码
+        extractedPlayer1Country =
+            lastSegment.replaceAll('.svg', '').toUpperCase();
+      }
+    }
+    String? player1Country = player1['PlayerCountry'] ?? '';
+    String? player2Country = player2['PlayerCountry'] ?? '';
+    String? player1ImageUrl = widget.player1ImageUrl;
+    String? player1FlagUrl = widget.player1FlagUrl ?? '';
+    String? player2ImageUrl = widget.player2ImageUrl;
+    String? player2FlagUrl = widget.player2FlagUrl ?? '';
+    debugPrint(
+        'extractedPlayer1Country: $extractedPlayer1Country player1Country: $player1Country');
+    if (extractedPlayer1Country.toLowerCase() ==
+        player1Country.toString().toLowerCase()) {
+      player1ImageUrl = widget.player1ImageUrl;
+      player2ImageUrl = widget.player2ImageUrl;
+    } else {
+      player1ImageUrl = widget.player2ImageUrl;
+      player2ImageUrl = widget.player1ImageUrl;
+      player1FlagUrl = widget.player2FlagUrl ?? '';
+      player2FlagUrl = widget.player1FlagUrl ?? '';
+      player1Country = player2['PlayerCountry'];
+      player2Country = player1['PlayerCountry'];
+    }
+    debugPrint('Player1 Image URL: ${player1ImageUrl}');
+    debugPrint('Player2 Image URL: ${player2ImageUrl}');
+    debugPrint('Player1 Flag URL: ${player1FlagUrl}');
+    debugPrint('Player2 Flag URL: ${player2FlagUrl}');
+
+    final player1Sets = playerTeam['SetScores'];
+
+    // 球员2信息
+
+    final player2FirstName = player2['PlayerFirstName'];
+    final player2LastName = player2['PlayerLastName'];
+
+    final player2Sets = opponentTeam['SetScores'];
+
+    // 获取比赛统计数据
+    final player1Stats = player1Sets.isNotEmpty ? player1Sets[0]['Stats'] : {};
+    final player2Stats = player2Sets.isNotEmpty ? player2Sets[0]['Stats'] : {};
+    // 比分数据
+    // 获取年度统计数据
+    final player1YearStats = playerTeam['YearToDateStats'] ?? {};
+    final player2YearStats = opponentTeam['YearToDateStats'] ?? {};
+
+    List<String> player1ScoresList = [];
+    List<String> player2ScoresList = [];
+    List<String> player1TiebreakList = [];
+    List<String> player2TiebreakList = [];
+
+    // 从第1个索引开始，因为索引0是总体统计
+    for (int i = 1; i < player1Sets.length; i++) {
+      final set1 = player1Sets[i];
+      final set2 = player2Sets[i];
+      if (set1['SetScore'] != null && set2['SetScore'] != null) {
+        player1ScoresList.add(set1['SetScore']?.toString() ?? '0');
+        player2ScoresList.add(set2['SetScore']?.toString() ?? '0');
+      }
+      // 添加抢七比分
+      player1TiebreakList.add(set1['TieBreakScore']?.toString() ?? '');
+      player2TiebreakList.add(set2['TieBreakScore']?.toString() ?? '');
+    }
+    // 提取比分
+    debugPrint('player1Sets: ${player1Sets.length}');
+    List<Map<String, String>> setScores = [];
+    for (int i = 0; i < player1Sets.length; i++) {
+      String p1Score = '';
+      String p2Score = '';
+
+      if (player1Sets[i]['SetScore'] == null &&
+          player2Sets[i]['SetScore'] == null) {
+        continue;
+      }
+      if (player1Sets[i]['SetScore'] != null) {
+        p1Score = player1Sets[i]['SetScore'].toString().padLeft(2, '');
+      }
+      if (player2Sets[i]['SetScore'] != null) {
+        p2Score = player2Sets[i]['SetScore'].toString().padLeft(2, '');
+      }
+
+      setScores.add({'player1': p1Score, 'player2': p2Score});
+    }
+
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: SafeArea(
+        child: Column(
+          children: [
+            // 顶部区域 - 比赛地点和返回按钮
+            _buildHeader('Match Detail', isLive),
+
+            // 比分区域
+            _buildScoreArea(
+                player1Id,
+                player2Id,
+                _formatPlayerName('$player1FirstName $player1LastName'),
+                player1Country!,
+                player1ImageUrl!,
+                player1FlagUrl,
+                _formatPlayerName('$player2FirstName $player2LastName'),
+                player2Country!,
+                player2ImageUrl!,
+                player2FlagUrl,
+                setScores,
+                player1TiebreakList,
+                player2TiebreakList),
+
+            const SizedBox(height: 12),
+            // 统计数据区域
+
+            Expanded(
+              child: _buildStatsArea(player1Stats, player2Stats),
+            ),
+
+            // 底部导航栏
+          ],
+        ),
+      ),
+    );
+  }
+
+  // 构建顶部区域
+  Widget _buildHeader(String location, bool isLive) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Row(
+        children: [
+          // 返回按钮
+          GestureDetector(
+            onTap: () => Navigator.pop(context),
+            child: Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.2),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.arrow_back,
+                color: Colors.white,
+                size: 20,
+              ),
+            ),
+          ),
+
+          const SizedBox(width: 12),
+
+          // 比赛地点
+          Text(
+            location,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+
+          // 直播标签
+          if (isLive)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.red,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 6,
+                    height: 6,
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  const Text(
+                    'LIVE',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  // 构建比分区域
+  Widget _buildScoreArea(
+      String player1Id,
+      String player2Id,
+      String player1Name,
+      String player1Country,
+      String player1ImageUrl,
+      String player1FlagUrl,
+      String player2Name,
+      String player2Country,
+      String player2ImageUrl,
+      String player2FlagUrl,
+      List<Map<String, String>> setScores,
+      player1TiebreakList,
+      player2TiebreakList) {
+    // 使用传入的URL或者默认URL
+    final p1ImageUrl = player1ImageUrl;
+    final p2ImageUrl = player2ImageUrl;
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 0, vertical: 0),
+      child: ClipRRect(
+        borderRadius: const BorderRadius.vertical(
+          bottom: Radius.circular(20),
+        ),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            // 背景图片
+            Image.asset(
+              'assets/images/madrid.webp',
+              width: double.infinity,
+              height: 260,
+              fit: BoxFit.cover,
+            ),
+            // 渐变遮罩
+            Container(
+              width: double.infinity,
+              height: 260,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.black.withOpacity(0.3),
+                    Colors.black.withOpacity(0.5),
+                    Colors.black.withOpacity(0.9),
+                  ],
+                  stops: const [0.0, 0.5, 1.0],
+                ),
+              ),
+            ),
+
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+              child: Column(
+                children: [
+                  // 球员信息和比分
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      // 球员1
+                      Column(
+                        children: [
+                          // 球员1头像
+                          Stack(
+                            children: [
+                              GestureDetector(
+                                onTap: () {
+                                  // 导航到球员详情页面
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => PlayerDetailsPage(
+                                        playerId: player1Id ?? '',
+                                        playerName: player1Name,
+                                        playerCountry: player1Country,
+                                        playerColor: const Color(0xFF94E831),
+                                      ),
+                                    ),
+                                  );
+                                },
+                                child: Container(
+                                  width: 60,
+                                  height: 60,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                        color: const Color(0xFF94E831),
+                                        width: 2),
+                                    image: DecorationImage(
+                                      image: NetworkImage(p1ImageUrl),
+                                      fit: BoxFit.cover,
+                                      onError: (exception, stackTrace) {},
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          // 球员1名称
+                          Text(
+                            player1Name,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          // 球员1国家
+                          Row(
+                            children: [
+                              if (player1FlagUrl.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(right: 4.0),
+                                  child: SvgPicture.network(
+                                    player1FlagUrl,
+                                    width: 16,
+                                    height: 12,
+                                  ),
+                                ),
+                              Text(
+                                player1Country,
+                                style: TextStyle(
+                                  color: Colors.white.withOpacity(0.7),
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+
+                      // 比分
+                      Column(
+                        children: [
+                          // 第一盘比分
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              // 球员1比分区域
+                              Container(
+                                width: 50,
+                                alignment: Alignment.centerRight,
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.end,
+                                  children: [
+                                    Text(
+                                      setScores[0]['player1'] ?? '07',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    // 显示抢七小分
+                                    if (player1TiebreakList.length > 0 &&
+                                        player1TiebreakList[0].isNotEmpty)
+                                      Text(
+                                        '(${player1TiebreakList[0]})',
+                                        style: TextStyle(
+                                          color: Colors.white.withOpacity(0.7),
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+
+                              // 分隔符
+                              Container(
+                                width: 30,
+                                alignment: Alignment.center,
+                                child: const Text(
+                                  '-',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                              ),
+
+                              // 球员2比分区域
+                              Container(
+                                width: 50,
+                                alignment: Alignment.centerLeft,
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      setScores[0]['player2'] ?? '05',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    // 显示抢七小分
+                                    if (player2TiebreakList.length > 0 &&
+                                        player2TiebreakList[0].isNotEmpty)
+                                      Text(
+                                        '(${player2TiebreakList[0]})',
+                                        style: TextStyle(
+                                          color: Colors.white.withOpacity(0.7),
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+
+                          // 第二盘比分
+                          if (setScores.length > 1)
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                // 球员1比分区域
+                                Container(
+                                  width: 50,
+                                  alignment: Alignment.centerRight,
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.end,
+                                    children: [
+                                      Text(
+                                        setScores[1]['player1'] ?? '00',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      // 显示抢七小分
+                                      if (player1TiebreakList.length > 1 &&
+                                          player1TiebreakList[1].isNotEmpty)
+                                        Text(
+                                          '(${player1TiebreakList[1]})',
+                                          style: TextStyle(
+                                            color:
+                                                Colors.white.withOpacity(0.7),
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+
+                                // 分隔符
+                                Container(
+                                  width: 30,
+                                  alignment: Alignment.center,
+                                  child: const Text(
+                                    '-',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                ),
+
+                                // 球员2比分区域
+                                Container(
+                                  width: 50,
+                                  alignment: Alignment.centerLeft,
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        setScores[1]['player2'] ?? '01',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      // 显示抢七小分
+                                      if (player2TiebreakList.length > 1 &&
+                                          player2TiebreakList[1].isNotEmpty)
+                                        Text(
+                                          '(${player2TiebreakList[1]})',
+                                          style: TextStyle(
+                                            color:
+                                                Colors.white.withOpacity(0.7),
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          if (setScores.length > 1) const SizedBox(height: 8),
+
+                          // 第三盘比分
+                          if (setScores.length > 2)
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                // 球员1比分区域
+                                Container(
+                                  width: 50,
+                                  alignment: Alignment.centerRight,
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.end,
+                                    children: [
+                                      Text(
+                                        setScores[2]['player1'] ?? '02',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      // 显示抢七小分
+                                      if (player1TiebreakList.length > 2 &&
+                                          player1TiebreakList[2].isNotEmpty)
+                                        Text(
+                                          '(${player1TiebreakList[2]})',
+                                          style: TextStyle(
+                                            color:
+                                                Colors.white.withOpacity(0.7),
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+
+                                // 分隔符
+                                Container(
+                                  width: 30,
+                                  alignment: Alignment.center,
+                                  child: const Text(
+                                    '-',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                ),
+
+                                // 球员2比分区域
+                                Container(
+                                  width: 50,
+                                  alignment: Alignment.centerLeft,
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        setScores[2]['player2'] ?? '05',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      // 显示抢七小分
+                                      if (player2TiebreakList.length > 2 &&
+                                          player2TiebreakList[2].isNotEmpty)
+                                        Text(
+                                          '(${player2TiebreakList[2]})',
+                                          style: TextStyle(
+                                            color:
+                                                Colors.white.withOpacity(0.7),
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                        ],
+                      ),
+
+                      // 球员2
+                      Column(
+                        children: [
+                          // 球员2头像
+                          Stack(
+                            children: [
+                              GestureDetector(
+                                onTap: () {
+                                  // 导航到球员详情页面
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => PlayerDetailsPage(
+                                        playerId: player2Id ?? '',
+                                        playerName: player2Name,
+                                        playerCountry: player2Country,
+                                        playerColor: const Color(0xFFAA00FF),
+                                      ),
+                                    ),
+                                  );
+                                },
+                                child: Container(
+                                  width: 60,
+                                  height: 60,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                        color: const Color(0xFFAA00FF),
+                                        width: 2),
+                                    image: DecorationImage(
+                                      image: NetworkImage(p2ImageUrl),
+                                      fit: BoxFit.cover,
+                                      onError: (exception, stackTrace) {},
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          // 球员2名称
+                          Text(
+                            player2Name,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          // 球员2国家
+                          Row(
+                            children: [
+                              if (player2FlagUrl.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(right: 4.0),
+                                  child: SvgPicture.network(
+                                    player2FlagUrl,
+                                    width: 16,
+                                    height: 12,
+                                  ),
+                                ),
+                              Text(
+                                player2Country,
+                                style: TextStyle(
+                                  color: Colors.white.withOpacity(0.7),
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            )
+          ],
+        ),
+      ),
+    );
+  }
+
+  // 构建统计数据区域
+  Widget _buildStatsArea(Map player1Stats, Map player2Stats) {
+    // STATS统计数据
+    final serviceStats1 = player1Stats['ServiceStats'] ?? {};
+    final serviceStats2 = player2Stats['ServiceStats'] ?? {};
+    final returnStats1 = player1Stats['ReturnStats'] ?? {};
+    final returnStats2 = player2Stats['ReturnStats'] ?? {};
+    final pointStats1 = player1Stats['PointStats'] ?? {};
+    final pointStats2 = player2Stats['PointStats'] ?? {};
+    //YTD STATS
+    final player1YearStats =
+        _matchData!['Match']['PlayerTeam']['YearToDateStats'] ?? {};
+    final player2YearStats =
+        _matchData!['Match']['OpponentTeam']['YearToDateStats'] ?? {};
+    final serviceYTDStats1 = player1YearStats['ServiceRecordStats'] ?? {};
+    final serviceYTDStats2 = player2YearStats['ServiceRecordStats'] ?? {};
+    final returnYTDStats1 = player1YearStats['ReturnRecordStats'] ?? {};
+    final returnYTDStats2 = player2YearStats['ReturnRecordStats'] ?? {};
+
+    return Container(
+      padding: const EdgeInsets.all(8),
+      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+      decoration: BoxDecoration(
+        color: Color(0xFF0C0D0C),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.2),
+            blurRadius: 10,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 标题
+          Padding(
+            padding: const EdgeInsets.only(top: 16, bottom: 8, left: 8),
+            child: Text(
+              _currentStatsPage == 0 ? 'Match Stats' : 'YTD Stats',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          // 统计数据
+          Expanded(
+            child: PageView(
+              onPageChanged: (index) {
+                setState(() {
+                  _currentStatsPage = index;
+                });
+              },
+              children: [
+                // 当前比赛统计
+                ListView(padding: const EdgeInsets.all(16), children: [
+                  // 发球统计
+                  _buildCenteredStatBar(
+                    '1st Serve %',
+                    serviceStats1['FirstServe']['Dividend'] != null
+                        ? int.parse(
+                            serviceStats1['FirstServe']['Dividend'].toString())
+                        : 0,
+                    serviceStats1['FirstServe']['Divisor'] != null
+                        ? int.parse(
+                            serviceStats1['FirstServe']['Divisor'].toString())
+                        : 1,
+                    serviceStats2['FirstServe']['Dividend'] != null
+                        ? int.parse(
+                            serviceStats2['FirstServe']['Dividend'].toString())
+                        : 0,
+                    serviceStats2['FirstServe']['Divisor'] != null
+                        ? int.parse(
+                            serviceStats2['FirstServe']['Divisor'].toString())
+                        : 1,
+                  ),
+                  const SizedBox(height: 16),
+                  _buildCenteredStatBar(
+                    '1st Serve Points Won',
+                    serviceStats1['FirstServePointsWon']['Dividend'] ?? 0,
+                    serviceStats1['FirstServePointsWon']['Divisor'] ?? 1,
+                    serviceStats2['FirstServePointsWon']['Dividend'] ?? 0,
+                    serviceStats2['FirstServePointsWon']['Divisor'] ?? 1,
+                  ),
+                  const SizedBox(height: 16),
+
+                  _buildCenteredStatBar(
+                    'ACE',
+                    serviceStats1['Aces']['Number'] ?? 0,
+                    1,
+                    serviceStats2['Aces']['Number'] ?? 0,
+                    1,
+                  ),
+                  const SizedBox(height: 16),
+                  _buildCenteredStatBar(
+                    '2nd Serve Points Won',
+                    serviceStats1['SecondServePointsWon']['Dividend'] ?? 0,
+                    serviceStats1['SecondServePointsWon']['Divisor'] ?? 1,
+                    serviceStats2['SecondServePointsWon']['Dividend'] ?? 0,
+                    serviceStats2['SecondServePointsWon']['Divisor'] ?? 1,
+                  ),
+                  const SizedBox(height: 16),
+                  _buildCenteredStatBar(
+                    'Break Points Saved',
+                    serviceStats1['BreakPointsSaved']['Dividend'] ?? 0,
+                    serviceStats1['BreakPointsSaved']['Divisor'] ?? 1,
+                    serviceStats2['BreakPointsSaved']['Dividend'] ?? 0,
+                    serviceStats2['BreakPointsSaved']['Divisor'] ?? 1,
+                  ),
+                  const SizedBox(height: 16),
+                  _buildCenteredStatBar(
+                    'Double Faults',
+                    serviceStats1['DoubleFaults']['Number'] ?? 0,
+                    1,
+                    serviceStats2['DoubleFaults']['Number'] ?? 0,
+                    1,
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // 接发球统计
+                  _buildCenteredStatBar(
+                    'Return Points Won',
+                    returnStats1['FirstServeReturnPointsWon']['Dividend'] ?? 0,
+                    returnStats1['FirstServeReturnPointsWon']['Divisor'] ?? 1,
+                    returnStats2['FirstServeReturnPointsWon']['Dividend'] ?? 0,
+                    returnStats2['FirstServeReturnPointsWon']['Divisor'] ?? 1,
+                  ),
+                  const SizedBox(height: 16),
+                  // 接发球统计
+                  _buildCenteredStatBar(
+                    'Return Points Won',
+                    returnStats1['SecondServeReturnPointsWon']['Dividend'] ?? 0,
+                    returnStats1['SecondServeReturnPointsWon']['Divisor'] ?? 1,
+                    returnStats2['SecondServeReturnPointsWon']['Dividend'] ?? 0,
+                    returnStats2['SecondServeReturnPointsWon']['Divisor'] ?? 1,
+                  ),
+                  const SizedBox(height: 16),
+                  _buildCenteredStatBar(
+                    'Break Points Converted',
+                    returnStats1['BreakPointsConverted']['Dividend'] ?? 0,
+                    returnStats1['BreakPointsConverted']['Divisor'] ?? 1,
+                    returnStats2['BreakPointsConverted']['Dividend'] ?? 0,
+                    returnStats2['BreakPointsConverted']['Divisor'] ?? 1,
+                  ),
+                  const SizedBox(height: 16),
+                  _buildCenteredStatBar(
+                    'Break Points Converted',
+                    returnStats1['BreakPointsConverted']['Dividend'] ?? 0,
+                    returnStats1['BreakPointsConverted']['Divisor'] ?? 1,
+                    returnStats2['BreakPointsConverted']['Dividend'] ?? 0,
+                    returnStats2['BreakPointsConverted']['Divisor'] ?? 1,
+                  ),
+                  const SizedBox(height: 16),
+                  // 总体统计
+                  _buildCenteredStatBar(
+                    'Total Points Won',
+                    pointStats1['TotalServicePointsWon']['Dividend'] ?? 0,
+                    pointStats1['TotalServicePointsWon']['Divisor'] ?? 1,
+                    pointStats2['TotalServicePointsWon']['Dividend'] ?? 0,
+                    pointStats2['TotalServicePointsWon']['Divisor'] ?? 1,
+                  ),
+                  const SizedBox(height: 16),
+                  // 总体统计
+                  _buildCenteredStatBar(
+                    'Total Return Points Won',
+                    pointStats1['TotalReturnPointsWon']['Dividend'] ?? 0,
+                    pointStats1['TotalReturnPointsWon']['Divisor'] ?? 1,
+                    pointStats2['TotalReturnPointsWon']['Dividend'] ?? 0,
+                    pointStats2['TotalReturnPointsWon']['Divisor'] ?? 1,
+                  ),
+                  // 总体统计
+                  const SizedBox(height: 16),
+                  _buildCenteredStatBar(
+                    'Total Points Won',
+                    pointStats1['TotalPointsWon']['Dividend'] ?? 0,
+                    pointStats1['TotalPointsWon']['Divisor'] ?? 1,
+                    pointStats2['TotalPointsWon']['Dividend'] ?? 0,
+                    pointStats2['TotalPointsWon']['Divisor'] ?? 1,
+                  ),
+                ]),
+
+                // 年度统计
+                ListView(
+                  padding: const EdgeInsets.all(16),
+                  children: [
+                    _buildCenteredStatBar(
+                      '1st Serve %',
+                      serviceYTDStats1['FirstServe']['Percent'] != null
+                          ? int.parse(serviceYTDStats1['FirstServe']['Percent']
+                              .toString())
+                          : 0,
+                      100,
+                      serviceYTDStats2['FirstServe']['Percent'] != null
+                          ? int.parse(serviceYTDStats2['FirstServe']['Percent']
+                              .toString())
+                          : 0,
+                      100,
+                    ),
+                    const SizedBox(height: 16),
+                    _buildCenteredStatBar(
+                      'Service Games Won %',
+                      serviceYTDStats1['ServiceGamesWon']['Percent'] != null
+                          ? int.parse(serviceYTDStats1['ServiceGamesWon']
+                                  ['Percent']
+                              .toString())
+                          : 0,
+                      100,
+                      serviceYTDStats2['ServiceGamesWon']['Percent'] != null
+                          ? int.parse(serviceYTDStats2['ServiceGamesWon']
+                                  ['Percent']
+                              .toString())
+                          : 0,
+                      100,
+                    ),
+                    const SizedBox(height: 16),
+                    _buildCenteredStatBar(
+                      'Total Service Points Won %',
+                      serviceYTDStats1['TotalServicePointsWon']['Percent'] !=
+                              null
+                          ? int.parse(serviceYTDStats1['TotalServicePointsWon']
+                                  ['Percent']
+                              .toString())
+                          : 0,
+                      100,
+                      serviceYTDStats2['TotalServicePointsWon']['Percent'] !=
+                              null
+                          ? int.parse(serviceYTDStats2['TotalServicePointsWon']
+                                  ['Percent']
+                              .toString())
+                          : 0,
+                      100,
+                    ),
+                    const SizedBox(height: 16),
+
+                    _buildCenteredStatBar(
+                      '1st Serve Points Won',
+                      serviceYTDStats1['FirstServePointsWon']['Percent'] ?? 0,
+                      100,
+                      serviceYTDStats2['FirstServePointsWon']['Percent'] ?? 0,
+                      100,
+                    ),
+                    const SizedBox(height: 16),
+
+                    _buildCenteredStatBar(
+                      '2nd Serve Points Won',
+                      serviceYTDStats1['SecondServePointsWon']['Percent'] ?? 0,
+                      100,
+                      serviceYTDStats2['SecondServePointsWon']['Percent'] ?? 0,
+                      100,
+                    ),
+                    const SizedBox(height: 16),
+                    _buildCenteredStatBar(
+                      'Break Points Saved',
+                      serviceYTDStats1['BreakPointsSaved']['Percent'] ?? 0,
+                      100,
+                      serviceYTDStats2['BreakPointsSaved']['Percent'] ?? 0,
+                      100,
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    _buildCenteredStatBar(
+                      'ACE',
+                      serviceYTDStats1['Aces']['Number'] ?? 0,
+                      1,
+                      serviceYTDStats2['Aces']['Number'] ?? 0,
+                      1,
+                    ),
+                    const SizedBox(height: 16),
+                    _buildCenteredStatBar(
+                      'Double Faults',
+                      serviceYTDStats1['DoubleFaults']['Number'] ?? 0,
+                      1,
+                      serviceYTDStats2['DoubleFaults']['Number'] ?? 0,
+                      1,
+                    ),
+                    const SizedBox(height: 16),
+
+                    // 接发球统计
+                    _buildCenteredStatBar(
+                      'Return Points Won',
+                      returnYTDStats1['FirstServeReturnPointsWon']['Percent'] ??
+                          0,
+                      100,
+                      returnYTDStats2['FirstServeReturnPointsWon']['Percent'] ??
+                          0,
+                      100,
+                    ),
+                    const SizedBox(height: 16),
+                    // 接发球统计
+                    _buildCenteredStatBar(
+                      'Return Points Won',
+                      returnYTDStats1['SecondServeReturnPointsWon']
+                              ['Percent'] ??
+                          0,
+                      100,
+                      returnYTDStats2['SecondServeReturnPointsWon']
+                              ['Percent'] ??
+                          0,
+                      100,
+                    ),
+                    const SizedBox(height: 16),
+                    _buildCenteredStatBar(
+                      'Break Points Converted',
+                      returnYTDStats1['BreakPointsConverted']['Percent'] ?? 0,
+                      100,
+                      returnYTDStats2['BreakPointsConverted']['Percent'] ?? 0,
+                      100,
+                    ),
+                    const SizedBox(height: 16),
+                    _buildCenteredStatBar(
+                      'Break Points Converted',
+                      returnYTDStats1['ReturnPointsWon']['Percent'] ?? 0,
+                      100,
+                      returnYTDStats2['ReturnPointsWon']['Percent'] ?? 0,
+                      100,
+                    ),
+                    const SizedBox(height: 16),
+                    _buildCenteredStatBar(
+                      'Return Games Won',
+                      returnYTDStats1['ReturnGamesWon']['Percent'] ?? 0,
+                      100,
+                      returnYTDStats2['ReturnGamesWon']['Percent'] ?? 0,
+                      100,
+                    ),
+                    const SizedBox(height: 16),
+                    _buildCenteredStatBar(
+                      'Return Games Won',
+                      returnYTDStats1['TotalPointsWon']['Percent'] ?? 0,
+                      100,
+                      returnYTDStats2['TotalPointsWon']['Percent'] ?? 0,
+                      100,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          // 页面指示器
+          Padding(
+            padding: const EdgeInsets.only(bottom: 16.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: _currentStatsPage == 0
+                        ? const Color(0xFF94E831)
+                        : Colors.grey.withOpacity(0.5),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: _currentStatsPage == 1
+                        ? const Color(0xFF94E831)
+                        : Colors.grey.withOpacity(0.5),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 构建比赛统计选项卡
+  // 构建得分统计
+  // 构建中心对齐的统计条
+  Widget _buildCenteredStatBar(String title, int player1Value, int player1Total,
+      int player2Value, int player2Total) {
+    // 计算百分比
+    final player1Percent =
+        player1Total > 0 ? (player1Value / player1Total * 100).round() : 0;
+    final player2Percent =
+        player2Total > 0 ? (player2Value / player2Total * 100).round() : 0;
+
+    // 计算进度条宽度
+    // 计算总百分比，用于确定每边的比例
+    final totalPercent = player1Percent + player2Percent;
+    final player1Ratio = totalPercent > 0 ? player1Percent / totalPercent : 0.5;
+    final player2Ratio = totalPercent > 0 ? player2Percent / totalPercent : 0.5;
+
+    final totalWidth =
+        MediaQuery.of(context).size.width * 0.6 - 16; // 减去左右padding和边距
+    final totalValue = player1Value + player2Value;
+    final player1Width =
+        totalWidth / 2 * (player1Total > 0 ? (player1Value / player1Total) : 0);
+    final player2Width =
+        totalWidth / 2 * (player1Total > 0 ? (player2Value / player2Total) : 0);
+    final bool isYtdData = _currentStatsPage == 1;
+    final bool isCountData =
+        title.contains('ACE') || title.contains('Double'); // 当分母为1时，通常是计数型数据
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // 百分比和数值
+        Padding(
+          padding: const EdgeInsets.only(bottom: 4.0),
+          child: Text(
+            title,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+            ),
+          ),
+        ),
+
+        // 进度条
+        Row(
+          children: [
+            // 球员1百分比
+            SizedBox(
+              width: 44,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    isCountData ? '$player1Value' : '$player1Percent%',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  if (!isYtdData && !isCountData)
+                    Text(
+                      '(${player1Value}/${player1Total})',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.7),
+                        fontSize: 10,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+
+            // 进度条
+            Expanded(
+              child: SizedBox(
+                height: 12,
+                // decoration: BoxDecoration(
+                //   color: Colors.grey.withOpacity(0.2),
+                //   borderRadius: BorderRadius.circular(6),
+                // ),
+                child: Row(
+                  children: [
+                    // 球员1进度
+                    Container(
+                      width: totalWidth / 2,
+                      height: 12,
+                      alignment: Alignment.centerRight,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.withOpacity(0.2),
+                        borderRadius: const BorderRadius.only(
+                          topLeft: Radius.circular(6),
+                          bottomLeft: Radius.circular(6),
+                        ),
+                      ),
+                      child: Container(
+                        width: player1Width,
+                        height: 12,
+                        decoration: const BoxDecoration(
+                          color: Color(0xFF94E831),
+                          borderRadius: BorderRadius.only(
+                            topLeft: Radius.circular(6),
+                            bottomLeft: Radius.circular(6),
+                            topRight: Radius.zero,
+                            bottomRight: Radius.zero,
+                          ),
+                        ),
+                      ),
+                    ),
+                    // 球员2进度
+                    Container(
+                      width: totalWidth / 2,
+                      height: 12,
+                      alignment: Alignment.centerLeft,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.withOpacity(0.2),
+                        borderRadius: const BorderRadius.only(
+                          topLeft: Radius.zero,
+                          bottomLeft: Radius.zero,
+                          topRight: Radius.circular(6),
+                          bottomRight: Radius.circular(6),
+                        ),
+                      ),
+                      child: Container(
+                        width: player2Width,
+                        height: 12,
+                        decoration: const BoxDecoration(
+                          color: Color(0xFFAA00FF),
+                          borderRadius: BorderRadius.only(
+                            topLeft: Radius.zero,
+                            bottomLeft: Radius.zero,
+                            topRight: Radius.circular(6),
+                            bottomRight: Radius.circular(6),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            // 球员2百分比
+            SizedBox(
+              width: 44,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    isCountData ? '$player2Value' : '$player2Percent%',
+                    textAlign: TextAlign.right,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  if (!isYtdData && !isCountData)
+                    Text(
+                      '($player2Value/$player2Total)',
+                      textAlign: TextAlign.right,
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.7),
+                        fontSize: 10,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}

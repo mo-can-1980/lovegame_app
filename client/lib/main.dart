@@ -5,11 +5,12 @@
  * @version: 1.0
  * @Date: 2025-04-15 14:20:32
  * @LastEditors: ouchao
- * @LastEditTime: 2025-04-22 15:46:30
+ * @LastEditTime: 2025-04-30 19:34:18
  */
+import 'package:LoveGame/utils/constants.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:lovegame/utils/constants.dart';
+import 'utils/constants.dart';
 import 'package:provider/provider.dart';
 import 'pages/home_page.dart';
 import 'pages/tournament_calendar_page.dart';
