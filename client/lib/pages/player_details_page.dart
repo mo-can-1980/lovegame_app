@@ -10,6 +10,7 @@ class PlayerDetailsPage extends StatefulWidget {
   final String playerName;
   final String playerCountry;
   final Color playerColor;
+  final String type; // 添加类型参数
 
   const PlayerDetailsPage({
     Key? key,
@@ -17,6 +18,7 @@ class PlayerDetailsPage extends StatefulWidget {
     required this.playerName,
     required this.playerCountry,
     required this.playerColor,
+    required this.type, // 添加类型参数
   }) : super(key: key);
 
   @override
@@ -47,6 +49,7 @@ class _PlayerDetailsPageState extends State<PlayerDetailsPage> {
   String _ytdTitles = '';
   int _ytdWins = 0;
   int _ytdLosses = 0;
+  String _headshot = '';
 
   // 生涯数据
   String _careerWinLoss = '';
@@ -69,8 +72,14 @@ class _PlayerDetailsPageState extends State<PlayerDetailsPage> {
     });
 
     try {
-      // 调用API获取球员详情
-      final data = await ApiService.getPlayerDetails(widget.playerId);
+      // 根据类型调用不同的 API
+      Map<String, dynamic> data;
+      if (widget.type == 'wta') {
+        data = await ApiService.getWTAPlayerDetails(widget.playerId,
+            "${widget.playerName.split(' ').first.toLowerCase()}-${widget.playerName.split(' ')[1].toLowerCase()}");
+      } else {
+        data = await ApiService.getPlayerDetails(widget.playerId);
+      }
 
       setState(() {
         _playerData = data;
@@ -145,7 +154,7 @@ class _PlayerDetailsPageState extends State<PlayerDetailsPage> {
     }
 
     _nationality = data['Nationality'] ?? widget.playerCountry;
-
+    debugPrint('Counntry: $_nationality');
     // 打法
     _plays = data['PlayHand']?['Description'] ?? 'Right-Handed';
     _backhand = data['BackHand']?['Description'] ?? 'Two-Handed';
@@ -153,6 +162,7 @@ class _PlayerDetailsPageState extends State<PlayerDetailsPage> {
     _SglYtdPrizeFormatted = data['SglYtdPrizeFormatted'] ?? '--';
     _CareerPrizeFormatted = data['CareerPrizeFormatted'] ?? '--';
     _coach = data['Coach'] ?? '';
+    _headshot = data['ImageUrl'] ?? '';
   }
 
   @override
@@ -267,9 +277,9 @@ class _PlayerDetailsPageState extends State<PlayerDetailsPage> {
             width: MediaQuery.of(context).size.width * 0.6, // 增加宽度比例
             child: Opacity(
               opacity: 0.85, // 稍微调整透明度
-              child: widget.playerId.isNotEmpty
+              child: widget.type == 'wta'
                   ? Image.network(
-                      'https://atptour.com/-/media/alias/player-gladiator-headshot/${widget.playerId}',
+                      _headshot,
                       fit: BoxFit.cover, // 使用cover而不是contain，确保填充整个区域
                       alignment: Alignment.topRight, // 改为顶部对齐，确保显示上半身
                       errorBuilder: (context, error, stackTrace) {
@@ -278,7 +288,16 @@ class _PlayerDetailsPageState extends State<PlayerDetailsPage> {
                         );
                       },
                     )
-                  : Container(color: Colors.transparent),
+                  : Image.network(
+                      'https://atptour.com/-/media/alias/player-gladiator-headshot/${widget.playerId}',
+                      fit: BoxFit.cover, // 使用cover而不是contain，确保填充整个区域
+                      alignment: Alignment.topRight, // 改为顶部对齐，确保显示上半身
+                      errorBuilder: (context, error, stackTrace) {
+                        return Container(
+                          color: Colors.transparent,
+                        );
+                      },
+                    ),
             ),
           ),
 
@@ -325,14 +344,21 @@ class _PlayerDetailsPageState extends State<PlayerDetailsPage> {
                     decoration: BoxDecoration(
                       border: Border.all(color: Colors.white, width: 1),
                     ),
-                    child: _playerData['ScRelativeUrlPlayerCountryFlag'] != null
+                    child: widget.type == 'wta'
                         ? SvgPicture.network(
-                            'https://atptour.com${_playerData['ScRelativeUrlPlayerCountryFlag']}',
+                            'https://www.atptour.com/-/media/images/flags/${_nationality.toString().toLowerCase()}.svg',
                             fit: BoxFit.cover,
                             placeholderBuilder: (context) =>
                                 Container(color: Colors.grey),
                           )
-                        : Container(color: Colors.grey),
+                        : _playerData['ScRelativeUrlPlayerCountryFlag'] != null
+                            ? SvgPicture.network(
+                                'https://atptour.com${_playerData['ScRelativeUrlPlayerCountryFlag']}',
+                                fit: BoxFit.cover,
+                                placeholderBuilder: (context) =>
+                                    Container(color: Colors.grey),
+                              )
+                            : Container(color: Colors.grey),
                   ),
                   const SizedBox(width: 8),
                   Text(

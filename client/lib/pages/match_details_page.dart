@@ -505,6 +505,7 @@ class _MatchDetailsPageState extends State<MatchDetailsPage>
                                         playerName: player1Name,
                                         playerCountry: player1Country,
                                         playerColor: const Color(0xFF94E831),
+                                        type: 'atp',
                                       ),
                                     ),
                                   );
@@ -822,6 +823,7 @@ class _MatchDetailsPageState extends State<MatchDetailsPage>
                                         playerName: player2Name,
                                         playerCountry: player2Country,
                                         playerColor: const Color(0xFFAA00FF),
+                                        type: 'atp',
                                       ),
                                     ),
                                   );

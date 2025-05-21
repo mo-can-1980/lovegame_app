@@ -5,7 +5,7 @@
  * @version: 1.0
  * @Date: 2025-04-21 17:22:17
  * @LastEditors: ouchao
- * @LastEditTime: 2025-05-15 16:05:24
+ * @LastEditTime: 2025-05-21 11:00:50
  */
 import 'package:LoveGame/utils/timezone_mapping.dart';
 import 'package:html/parser.dart';
@@ -41,7 +41,11 @@ class ApiService {
     String fullUrls = _baseUrl + endpoint;
     if (kIsWeb) {
       if (type == 'wta') {
-        fullUrls = 'https://api.wtatennis.com$endpoint';
+        if (endpoint.contains("https")) {
+          fullUrls = endpoint;
+        } else {
+          fullUrls = 'https://api.wtatennis.com$endpoint';
+        }
       }
 
       try {
@@ -52,9 +56,12 @@ class ApiService {
       }
     } else {
       // 移动平台直接请求
-      debugPrint('wta&&&&&&&&$type');
       if (type == 'wta') {
-        fullUrls = 'https://api.wtatennis.com$endpoint';
+        if (endpoint.contains("https")) {
+          fullUrls = endpoint;
+        } else {
+          fullUrls = 'https://api.wtatennis.com$endpoint';
+        }
       }
       return Uri.parse(_currentProxyUrl + Uri.encodeComponent(fullUrls));
     }
@@ -317,13 +324,21 @@ class ApiService {
             final player1Element = players.first;
             String player1Name = '';
             String player1Rank = '';
-
+            String player1Id = '';
             // 获取名字 (a标签内容)
             final player1NameLinks = player1Element.getElementsByTagName('a');
             if (player1NameLinks.isNotEmpty) {
               player1Name = player1NameLinks.first.text
                   .trim()
                   .replaceAll(RegExp(r'[\r\n]+'), '');
+              final href = player1NameLinks.first.attributes['href'];
+              if (href != null && href.isNotEmpty) {
+                final parts = href.split('/');
+                if (parts.length >= 4) {
+                  // 获取倒数第二个部分作为球员ID
+                  player1Id = parts[parts.length - 2];
+                }
+              }
             }
             // 获取排名 (rank class内容)
             final player1RankElements = player1Element
@@ -387,13 +402,22 @@ class ApiService {
             final player2Element = opponents.first;
             String player2Name = '';
             String player2Rank = '';
-
+            String player2Id = '';
             // 获取名字 (a标签内容)
             final player2NameLinks = player2Element.getElementsByTagName('a');
             if (player2NameLinks.isNotEmpty) {
               player2Name = player2NameLinks.first.text
                   .trim()
                   .replaceAll(RegExp(r'[\r\n]+'), '');
+              final href = player2NameLinks.first.attributes['href'];
+
+              if (href != null && href.isNotEmpty) {
+                final parts = href.split('/');
+                if (parts.length >= 4) {
+                  // 获取倒数第二个部分作为球员ID
+                  player2Id = parts[parts.length - 2];
+                }
+              }
             }
 
             // 获取排名 (rank class内容)
@@ -475,6 +499,8 @@ class ApiService {
               'courtInfo': courtInfo, // 添加获胜者标识
               'matchType': 'unmatch',
               'tournamentName': tournament['Name'],
+              'player1Id': player1Id, // 添加球员1 ID
+              'player2Id': player2Id, // 添加球员2 ID
             };
             // 添加到对应日期的比赛列表
             matchesByDate[dateStr]!.add(matchData);
@@ -772,6 +798,205 @@ class ApiService {
     }
   }
 
+  // 获取WTA比赛数据
+  static Future<List<Map<String, dynamic>>> getWTAMatches(
+      Map<String, dynamic> tournament, DateTime date) async {
+    Map<String, List<Map<String, dynamic>>> matchesByDate = {};
+    final formatter = DateFormat('yyyy-MM-dd');
+    final dateStr = formatter.format(date);
+    final formattedDate = DateFormat('E, dd MMMM, yyyy').format(date);
+    final currentYear = DateTime.now().year.toString();
+    int tournamentId = tournament['tournamentGroup']['id'];
+    try {
+      String endpoint =
+          '/tennis/tournaments/$tournamentId/$currentYear/matches?from=$dateStr&to=$dateStr';
+      final Uri uri = _buildUri(endpoint, 'wta');
+      final response = await http.get(uri);
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final List<dynamic> matches = data['matches'] ?? [];
+
+        // 过滤只显示单打比赛
+        final singleMatches =
+            matches.where((match) => match['DrawMatchType'] == 'S').toList();
+
+        List<Map<String, dynamic>> formattedMatches = [];
+
+        for (var match in singleMatches) {
+          // 获取比赛状态
+          final matchState = match['MatchState'] ?? '';
+
+          // 构建球员1信息
+          final player1 = {
+            'Name':
+                '${match['PlayerNameFirstA'] ?? ''} ${match['PlayerNameLastA'] ?? ''}',
+            'Rank': match['SeedA'] ?? '',
+            'Country': match['PlayerCountryA'] ?? '',
+            'ID': match['PlayerIDA'] ?? '',
+          };
+
+          // 构建球员2信息
+          final player2 = {
+            'Name':
+                '${match['PlayerNameFirstB'] ?? ''} ${match['PlayerNameLastB'] ?? ''}',
+            'Rank': match['SeedB'] ?? '',
+            'Country': match['PlayerCountryB'] ?? '',
+            'ID': match['PlayerIDB'] ?? '',
+          };
+
+          // 构建比分信息
+          List<Map<String, dynamic>> sets = [];
+
+          // 第一盘
+          if (match['ScoreSet1A'] != null &&
+              match['ScoreSet1A'].isNotEmpty &&
+              match['ScoreSet1B'] != null &&
+              match['ScoreSet1B'].isNotEmpty) {
+            sets.add({
+              'Player1Score': int.tryParse(match['ScoreSet1A']) ?? 0,
+              'Player2Score': int.tryParse(match['ScoreSet1B']) ?? 0,
+              'TiebreakScore': match['ScoreTbSet1'] ?? '',
+            });
+          }
+
+          // 第二盘
+          if (match['ScoreSet2A'] != null &&
+              match['ScoreSet2A'].isNotEmpty &&
+              match['ScoreSet2B'] != null &&
+              match['ScoreSet2B'].isNotEmpty) {
+            sets.add({
+              'Player1Score': int.tryParse(match['ScoreSet2A']) ?? 0,
+              'Player2Score': int.tryParse(match['ScoreSet2B']) ?? 0,
+              'TiebreakScore': match['ScoreTbSet2'] ?? '',
+            });
+          }
+
+          // 第三盘
+          if (match['ScoreSet3A'] != null &&
+              match['ScoreSet3A'].isNotEmpty &&
+              match['ScoreSet3B'] != null &&
+              match['ScoreSet3B'].isNotEmpty) {
+            sets.add({
+              'Player1Score': int.tryParse(match['ScoreSet3A']) ?? 0,
+              'Player2Score': int.tryParse(match['ScoreSet3B']) ?? 0,
+              'TiebreakScore': match['ScoreTbSet3'] ?? '',
+            });
+          }
+
+          // 处理比分
+          List<int> player1SetScores = [];
+          List<int> player2SetScores = [];
+          List<int> player1TiebreakScores = [];
+          List<int> player2TiebreakScores = [];
+
+          for (var set in sets) {
+            player1SetScores.add(set['Player1Score'] ?? 0);
+            player2SetScores.add(set['Player2Score'] ?? 0);
+
+            // 处理抢七
+            if (set['TiebreakScore'] != null &&
+                set['TiebreakScore'].isNotEmpty) {
+              final tiebreakParts = set['TiebreakScore'].toString().split('-');
+              if (tiebreakParts.length == 2) {
+                player1TiebreakScores.add(int.tryParse(tiebreakParts[0]) ?? 0);
+                player2TiebreakScores.add(int.tryParse(tiebreakParts[1]) ?? 0);
+              } else {
+                player1TiebreakScores.add(0);
+                player2TiebreakScores.add(0);
+              }
+            } else {
+              player1TiebreakScores.add(0);
+              player2TiebreakScores.add(0);
+            }
+          }
+
+          // 确保至少有3个元素（即使没有比分）
+          while (player1SetScores.length < 3) {
+            player1SetScores.add(0);
+          }
+          while (player2SetScores.length < 3) {
+            player2SetScores.add(0);
+          }
+          while (player1TiebreakScores.length < 3) {
+            player1TiebreakScores.add(0);
+          }
+          while (player2TiebreakScores.length < 3) {
+            player2TiebreakScores.add(0);
+          }
+
+          // 确定比赛类型
+          String matchType = 'Scheduled';
+          if (matchState == 'P') {
+            matchType = 'live';
+          } else if (matchState == 'F') {
+            matchType = 'completed';
+          } else if (matchState == 'U') {
+            matchType = 'scheduled';
+          }
+
+          // 确定获胜者
+          bool isPlayer1Winner = false;
+          bool isPlayer2Winner = false;
+          if (matchState == 'F') {
+            if (match['Winner'] == '2') {
+              isPlayer1Winner = true;
+            } else if (match['Winner'] == '3') {
+              isPlayer2Winner = true;
+            }
+          }
+
+          // 创建格式化的比赛数据
+          Map<String, dynamic> formattedMatch = {
+            'player1': player1['Name'],
+            'player2': player2['Name'],
+            'player1Rank': player1['Rank'].toString(),
+            'player2Rank': player2['Rank'].toString(),
+            'player1Country': player1['Country'],
+            'player2Country': player2['Country'],
+            'player1FlagUrl':
+                'https://www.atptour.com/-/media/images/flags/${player1['Country'].toString().toLowerCase()}.svg',
+            'player2FlagUrl':
+                'https://www.atptour.com/-/media/images/flags/${player2['Country'].toString().toLowerCase()}.svg',
+            'player1Id': player1['ID'],
+            'player2Id': player2['ID'],
+            'player1SetScores': player1SetScores,
+            'player2SetScores': player2SetScores,
+            'player1TiebreakScores': player1TiebreakScores,
+            'player2TiebreakScores': player2TiebreakScores,
+            'roundInfo': "Round ${match['RoundID'] ?? ''}",
+            'matchType': matchType,
+            'matchTime':
+                matchState == 'F' ? '${match['MatchTimeTotal']}' : 'UpComing',
+            'matchDuration': match['MatchTimeTotal'] ?? '',
+            'isPlayer1Winner': isPlayer1Winner,
+            'isPlayer2Winner': isPlayer2Winner,
+            'player1ImageUrl':
+                'https://wtafiles.blob.core.windows.net/images/headshots/${player1['ID'].toString()}.jpg',
+            'player2ImageUrl':
+                'https://wtafiles.blob.core.windows.net/images/headshots/${player2['ID'].toString()}.jpg',
+            'isCompleted': matchState == 'F',
+            'isLive': matchState == 'P',
+            'stadium': '${match['CourtName'] ?? 'Unknow'}',
+            'typePlayer': 'wta',
+            'tournamentName':
+                '${tournament['tournamentGroup']['name'] ?? ''} ${tournament['tournamentGroup']['level'] ?? ''}',
+          };
+
+          formattedMatches.add(formattedMatch);
+        }
+
+        matchesByDate[formattedDate] = formattedMatches;
+        return formattedMatches;
+      } else {
+        return [];
+      }
+    } catch (e) {
+      print('Error fetching WTA matches: $e');
+      return [];
+    }
+  }
+
   static Future<Map<String, List<Map<String, dynamic>>>>
       getATPMatchesResultData(String? scoresUrl, String? name) async {
     Map<String, List<Map<String, dynamic>>> matchesByDate = {};
@@ -882,6 +1107,18 @@ class ApiService {
                     .trim()
                     .replaceAll(RegExp(r'[\r\n]+'), '');
               }
+              var player1Id = '';
+              if (player1NameLink.isNotEmpty) {
+                final href = player1NameLink.first.attributes['href'];
+
+                if (href != null && href.isNotEmpty) {
+                  final parts = href.split('/');
+                  if (parts.length >= 4) {
+                    // 获取倒数第二个部分作为球员ID
+                    player1Id = parts[parts.length - 2];
+                  }
+                }
+              }
               final player1RankObj = player1Info
                   .getElementsByClassName('name')
                   .first
@@ -949,10 +1186,23 @@ class ApiService {
                   .getElementsByTagName('a');
               var player2Name = '';
               var player2Rank = '';
+
               if (player2NameLink.isNotEmpty) {
                 player2Name = player2NameLink.first.text
                     .trim()
                     .replaceAll(RegExp(r'[\r\n]+'), '');
+              }
+              var player2Id = '';
+              if (player2NameLink.isNotEmpty) {
+                final href = player2NameLink.first.attributes['href'];
+
+                if (href != null && href.isNotEmpty) {
+                  final parts = href.split('/');
+                  if (parts.length >= 4) {
+                    // 获取倒数第二个部分作为球员ID
+                    player2Id = parts[parts.length - 2];
+                  }
+                }
               }
               final player2RankObj = player2Info
                   .getElementsByClassName('name')
@@ -1084,6 +1334,8 @@ class ApiService {
                 'matchTime': matchTime,
                 'player1': player1Name,
                 'player2': player2Name,
+                'player1Id': player1Id,
+                'player2Id': player2Id,
                 'player1Rank': player1Rank,
                 'player2Rank': player2Rank,
                 'player1Country': player1Country,
@@ -1143,6 +1395,301 @@ class ApiService {
       debugPrint('获取球员详情异常: $e');
       // 如果API调用失败，尝试加载本地数据
       return loadLocalPlayerData();
+    }
+  }
+
+  // 获取WTA女子球员详情页数据
+  static Future<Map<String, dynamic>> getWTAPlayerDetails(
+      String playerId, String playername) async {
+    try {
+      // 构建完整URL
+      String playerUrl =
+          'https://www.wtatennis.com/players/$playerId/$playername';
+      final Uri uri = _buildUri(playerUrl, 'wta');
+      debugPrint('WTAgURI$playerUrl');
+      final response = await http.get(
+        uri,
+        headers: {
+          'Accept': 'text/html',
+          'User-Agent':
+              'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        },
+      ).timeout(const Duration(seconds: 10));
+      debugPrint('getWTAPlayerDetails!!!!!!!!!!!${response.statusCode}');
+      if (response.statusCode == 200) {
+        final document = parse(response.body);
+        Map<String, dynamic> playerData = {};
+        final playerImageElements =
+            document.getElementsByClassName('object-fit-cover-picture__img');
+        if (playerImageElements.isNotEmpty) {
+          final srcAttr = playerImageElements.first.attributes['src'];
+          if (srcAttr != null && srcAttr.isNotEmpty) {
+            // 如果src是相对路径，添加基础URL
+            if (srcAttr.startsWith('/')) {
+              playerData['ImageUrl'] = 'https://www.wtatennis.com$srcAttr';
+            } else {
+              playerData['ImageUrl'] = srcAttr;
+            }
+          } else {
+            playerData['ImageUrl'] = ''; // 默认值
+          }
+        } else {
+          playerData['ImageUrl'] = ''; // 默认值
+        }
+        // 获取球员基本信息
+        final bioInfoContainer =
+            document.getElementsByClassName('profile-bio__info');
+
+        if (bioInfoContainer.isNotEmpty) {
+          final bioItems = bioInfoContainer.first
+              .getElementsByClassName('profile-bio__info-block');
+          debugPrint('${bioItems.length}');
+          // 按顺序分别是持拍手，职业排名，身高，生日，出生地
+          for (var i = 0; i < bioItems.length; i++) {
+            final item = bioItems[i];
+            debugPrint("$i ==== $item");
+            final value = item
+                .getElementsByClassName('profile-bio__info-content')
+                .first
+                .text
+                .trim();
+
+            switch (i) {
+              case 0:
+                playerData['Plays'] = value; // 持拍手
+                playerData['PlayHand'] = {'Description': value}; // 与 ATP 格式统一
+                break;
+              case 1:
+                playerData['CurrentRank'] =
+                    value.replaceAll(RegExp(r'[^\d]'), ''); // 职业排名，只保留数字
+                playerData['SglRank'] =
+                    value.replaceAll(RegExp(r'[^\d]'), ''); // 与 ATP 格式统一
+                playerData['SglRankMove'] = '0'; // 默认值
+                break;
+              case 2:
+                playerData['Height'] = value; // 身高
+                // 处理身高格式，分离英制和公制单位
+                if (value.contains('(') && value.contains(')')) {
+                  // 格式如 "5' 11\" (1.82m)"
+                  final regex = RegExp(r'(.*?)\s*\((.*?)\)');
+                  final match = regex.firstMatch(value);
+                  if (match != null) {
+                    playerData['HeightFt'] =
+                        match.group(1)?.trim() ?? ''; // 英制单位 (5' 11")
+                    playerData['HeightCm'] =
+                        match.group(2)?.trim() ?? ''; // 公制单位 (1.82m)
+                  } else {
+                    playerData['HeightFt'] = value;
+                    playerData['HeightCm'] = '';
+                  }
+                } else {
+                  playerData['HeightFt'] = value;
+                  playerData['HeightCm'] = '';
+                }
+                break;
+              case 3:
+                debugPrint("$value");
+                break;
+              case 4:
+                playerData['Birthplace'] = value; // 出生地
+                playerData['BirthCity'] = value; // 与 ATP 格式统一
+                break;
+            }
+          }
+        }
+
+        // 获取当前教练
+        final currentCoach = document.getElementsByClassName('current-coach');
+        debugPrint("$currentCoach");
+        if (currentCoach.isNotEmpty) {
+          final coachValue =
+              currentCoach.first.getElementsByClassName('current-coach__info');
+          if (coachValue.isNotEmpty) {
+            playerData['Coach'] = coachValue.first.text.trim();
+          } else {
+            playerData['Coach'] = ''; // 默认值
+          }
+        } else {
+          playerData['Coach'] = ''; // 默认值
+        }
+
+        // 获取本赛季统计数据
+        final statBlocks = document.getElementsByClassName('stat-block');
+        if (statBlocks.isNotEmpty) {
+          List<Map<String, String>> seasonStats = [];
+
+          for (var block in statBlocks) {
+            debugPrint("$block");
+
+            final statValue = block
+                .getElementsByClassName('stat-block__stat')
+                .first
+                .text
+                .trim();
+
+            seasonStats.add({
+              'value': statValue,
+            });
+          }
+
+          // 按顺序分别是排名，冠军，胜负和奖金
+          if (seasonStats.length >= 4) {
+            playerData['YTDRank'] = seasonStats[0]['value'] ?? '0';
+            playerData['YTDTitles'] = seasonStats[1]['value'] ?? '0';
+            playerData['YTDWinLoss'] = seasonStats[2]['value'] ?? '0/0';
+            playerData['YTDPrizeMoney'] = seasonStats[3]['value'] ?? '0';
+
+            // 与 ATP 格式统一
+            playerData['SglYtdTitles'] = seasonStats[1]['value'] ?? '0';
+
+            // 解析胜负记录
+            final winLoss = (seasonStats[2]['value'] ?? '0/0').split('/');
+            playerData['SglYtdWon'] = int.tryParse(winLoss[0].trim()) ?? 0;
+            playerData['SglYtdLost'] =
+                winLoss.length > 1 ? int.tryParse(winLoss[1].trim()) ?? 0 : 0;
+
+            playerData['SglYtdPrizeFormatted'] = seasonStats[3]['value'] ?? '0';
+          } else {
+            // 默认值
+            playerData['YTDRank'] = '0';
+            playerData['YTDTitles'] = '0';
+            playerData['YTDWinLoss'] = '0/0';
+            playerData['YTDPrizeMoney'] = '0';
+            playerData['SglYtdTitles'] = '0';
+            playerData['SglYtdWon'] = 0;
+            playerData['SglYtdLost'] = 0;
+            playerData['SglYtdPrizeFormatted'] = '0';
+          }
+        } else {
+          // 默认值
+          playerData['YTDRank'] = '0';
+          playerData['YTDTitles'] = '0';
+          playerData['YTDWinLoss'] = '0/0';
+          playerData['YTDPrizeMoney'] = '0';
+          playerData['SglYtdTitles'] = '0';
+          playerData['SglYtdWon'] = 0;
+          playerData['SglYtdLost'] = 0;
+          playerData['SglYtdPrizeFormatted'] = '0';
+        }
+
+        // 获取球员姓名
+        final playerName =
+            document.getElementsByClassName('profile-header__name-wrap');
+        if (playerName.isNotEmpty) {
+          playerData['Name'] = playerName.first.text.trim();
+        } else {
+          playerData['Name'] = ''; // 默认值
+        }
+
+        // 添加球员类型标识
+        playerData['PlayerType'] = 'WTA';
+        playerData['ScRelativeUrlPlayerCountryFlag'] = '';
+        // 添加其他 ATP 格式字段的默认值
+        playerData['BackHand'] = {'Description': 'Two-Handed'};
+        playerData['Age'] = document
+            .getElementsByClassName('profile-header__meta-item')
+            .first
+            .text
+            .trim();
+        playerData['WeightLb'] = '--';
+        playerData['ProYear'] = '--';
+        final profileHeader = document.getElementsByClassName('profile-header');
+
+        if (profileHeader.isNotEmpty) {
+          final dataPlayerStats =
+              profileHeader.first.attributes['data-player-stats'];
+          debugPrint("profileHeader 000000$dataPlayerStats");
+          if (dataPlayerStats != null && dataPlayerStats.isNotEmpty) {
+            try {
+              // 解析JSON数据
+              final statsData = json.decode(dataPlayerStats);
+
+              // 获取career下的数据
+              if (statsData.containsKey('career')) {
+                final careerData = statsData['career'];
+
+                // 获取单打数据
+                if (careerData.containsKey('singles')) {
+                  final singleData = careerData['singles'];
+
+                  // 获取胜负场次
+                  if (singleData.containsKey('winLoss')) {
+                    final wonLost = singleData['winLoss'];
+                    final parts = wonLost.toString().split('/');
+                    if (parts.length == 2) {
+                      playerData['SglCareerWon'] =
+                          int.tryParse(parts[0].trim()) ?? 0;
+                      playerData['SglCareerLost'] =
+                          int.tryParse(parts[1].trim()) ?? 0;
+                    }
+                  }
+
+                  // 获取冠军数
+                  if (singleData.containsKey('titles')) {
+                    playerData['SglCareerTitles'] =
+                        singleData['titles'].toString();
+                  }
+
+                  // 获取最高排名
+                  if (singleData.containsKey('rank')) {
+                    playerData['SglHiRank'] = singleData['rank'].toString();
+                  }
+                }
+
+                // 获取奖金数据
+                if (careerData.containsKey('prizeMoney')) {
+                  playerData['CareerPrizeFormatted'] =
+                      '\$${NumberFormat('#,###').format(int.tryParse(careerData['prizeMoney'].toString()) ?? 0)}';
+                }
+              }
+            } catch (e) {
+              debugPrint('解析球员统计数据JSON出错: $e');
+            }
+          }
+        } else {
+          playerData['SglCareerWon'] = 0;
+          playerData['SglCareerLost'] = 0;
+          playerData['SglCareerTitles'] = '0';
+          playerData['SglHiRank'] = '0';
+          playerData['SglHiRankDate'] = DateTime.now().toString();
+          playerData['CareerPrizeFormatted'] = '0';
+        }
+
+        return playerData;
+      } else {
+        throw Exception('获取WTA球员数据失败: ${response.statusCode}');
+      }
+    } catch (e) {
+      debugPrint('解析WTA球员数据异常: $e');
+      // 返回默认数据结构，确保与 ATP 格式一致
+      return {
+        'Name': '',
+        'SglRank': '0',
+        'SglRankMove': '0',
+        'PlayHand': {'Description': 'Right-Handed'},
+        'BackHand': {'Description': 'Two-Handed'},
+        'Age': '0',
+        'WeightLb': '0',
+        'HeightFt': '',
+        'BirthDate': '',
+        'BirthCity': '',
+        'ProYear': '0',
+        'Nationality': '',
+        'Coach': '',
+        'SglYtdWon': 0,
+        'SglYtdLost': 0,
+        'SglYtdTitles': '0',
+        'SglCareerWon': 0,
+        'SglCareerLost': 0,
+        'SglCareerTitles': '0',
+        'SglHiRank': '0',
+        'SglHiRankDate': DateTime.now().toString(),
+        'SglYtdPrizeFormatted': '0',
+        'CareerPrizeFormatted': '0',
+        'PlayerType': 'WTA',
+        'ImageUrl': '',
+        'FlagUrl': '',
+      };
     }
   }
 

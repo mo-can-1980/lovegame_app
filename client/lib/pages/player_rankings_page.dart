@@ -387,6 +387,9 @@ class _PlayerRankingsPageState extends State<PlayerRankingsPage> {
                                           playerCountry:
                                               player['CountryCode'] ?? '',
                                           playerColor: _primaryColor,
+                                          type: _showATP
+                                              ? 'atp'
+                                              : 'wta', // 添加类型参数
                                         ),
                                       ),
                                     );
@@ -535,6 +538,7 @@ class _PlayerRankingsPageState extends State<PlayerRankingsPage> {
               playerName: name.isNotEmpty ? name : '$lastName $firstName',
               playerCountry: countryCode,
               playerColor: _primaryColor,
+              type: _showATP ? 'atp' : 'wta',
             ),
           ),
         );

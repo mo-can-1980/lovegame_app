@@ -36,6 +36,7 @@ class TennisScoreCard extends StatelessWidget {
   // 添加球员ID参数
   final String? player1Id;
   final String? player2Id;
+  final String? typePlayer;
 
   const TennisScoreCard(
       {super.key,
@@ -69,7 +70,8 @@ class TennisScoreCard extends StatelessWidget {
       this.stadium,
       this.tournamentName,
       this.player1Id,
-      this.player2Id});
+      this.player2Id,
+      this.typePlayer});
   String _formatPlayerName(String name) {
     // 如果名称超过16个字符，按空格分隔，取第一个元素的第一个字母加空格连接最后一个元素
     if (name.length > 13) {
@@ -90,7 +92,7 @@ class TennisScoreCard extends StatelessWidget {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     const backgroundColor = Color(0xFF0C0D0C); // 使用深灰色背景
     final borderColor = Colors.white.withOpacity(0.04); // 减小边框透明度，使其更加微妙
-
+    
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6.0),
       decoration: BoxDecoration(
@@ -115,55 +117,36 @@ class TennisScoreCard extends StatelessWidget {
               children: [
                 // 直播或已完成状态指示器
                 if (isLive)
-                  if (isLive)
-                    GestureDetector(
-                      onTap: () async {
-                        final Uri url =
-                            Uri.parse('https://www.haixing.cc/live?type=5');
-                        if (!await launchUrl(url)) {
-                          throw Exception('无法打开 $url');
-                        }
-                      },
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 5,
-                            height: 5,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF94E831),
-                              shape: BoxShape.circle,
-                              boxShadow: [
-                                BoxShadow(
-                                  color:
-                                      const Color(0xFF94E831).withOpacity(0.3),
-                                  blurRadius: 6,
-                                  spreadRadius: 2,
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          const Text(
-                            'LIVE',
-                            style: TextStyle(
-                              color: Color(0xFF94E831),
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                              height: 1.2,
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                  else
-                    Row(
+                  GestureDetector(
+                    onTap: () async {
+                      final Uri url =
+                          Uri.parse('https://www.haixing.cc/live?type=5');
+                      if (!await launchUrl(url)) {
+                        throw Exception('无法打开 $url');
+                      }
+                    },
+                    child: Row(
                       children: [
-                        Text(
-                          matchType.toString().toLowerCase() == 'completed'
-                              ? 'Completed'
-                              : 'Schedule',
-                          style: const TextStyle(
-                            color: Color(0xFFAC49FF),
+                        Container(
+                          width: 5,
+                          height: 5,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF94E831),
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFF94E831).withOpacity(0.3),
+                                blurRadius: 6,
+                                spreadRadius: 2,
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        const Text(
+                          'LIVE',
+                          style: TextStyle(
+                            color: Color(0xFF94E831),
                             fontSize: 12,
                             fontWeight: FontWeight.bold,
                             height: 1.2,
@@ -171,6 +154,23 @@ class TennisScoreCard extends StatelessWidget {
                         ),
                       ],
                     ),
+                  )
+                else
+                  Row(
+                    children: [
+                      Text(
+                        matchType.toString().toLowerCase() == 'completed'
+                            ? 'Completed'
+                            : 'Schedule',
+                        style: const TextStyle(
+                          color: Color(0xFFAC49FF),
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          height: 1.2,
+                        ),
+                      ),
+                    ],
+                  ),
                 const SizedBox(width: 6),
                 Text(
                   '${tournamentName.toString().replaceAll(RegExp(r'[\r\n]+'), '')},$roundInfo',
@@ -284,6 +284,7 @@ class TennisScoreCard extends StatelessWidget {
                                               playerCountry: player1Country,
                                               playerColor:
                                                   const Color(0xFF94E831),
+                                              type: typePlayer ?? 'atp',
                                             ),
                                           ),
                                         );
@@ -513,6 +514,9 @@ class TennisScoreCard extends StatelessWidget {
                                     GestureDetector(
                                       onTap: () {
                                         if (player2Id != null) {
+                                          debugPrint(
+                                              'onTap: ${player2Id},${player2Country}');
+
                                           Navigator.push(
                                             context,
                                             MaterialPageRoute(
@@ -523,6 +527,7 @@ class TennisScoreCard extends StatelessWidget {
                                                 playerCountry: player2Country,
                                                 playerColor:
                                                     const Color(0xFF94E831),
+                                                type: typePlayer ?? 'atp',
                                               ),
                                             ),
                                           );

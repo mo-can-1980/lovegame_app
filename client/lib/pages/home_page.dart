@@ -1,9 +1,12 @@
+import 'dart:convert';
+
 import 'package:LoveGame/pages/settings_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../components/tennis_calendar.dart';
 import '../components/glass_icon_button.dart';
 import '../components/tennis_score_card.dart';
@@ -40,6 +43,7 @@ class _HomePageState extends State<HomePage> {
   bool _isLoadingScheduled = false;
   Map<String, List<Map<String, dynamic>>> _scheduledMatchesByDate = {};
   List<Map<String, dynamic>> _displayedScheduledMatches = [];
+  List<Map<String, dynamic>> _displayedWTAMatches = [];
   String _tournamentLocation = '';
   String _errorMessage = '';
   String _selectedDateStr = '';
@@ -54,14 +58,14 @@ class _HomePageState extends State<HomePage> {
     setState(() {
       _selectedDateStr = formatter.format(DateTime.now());
     });
-    _loadData();
+    // _loadData();
 
     _scrollController.addListener(_onScroll);
 
     // 检查隐私政策
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _checkPrivacyPolicy();
-    });
+    // WidgetsBinding.instance.addPostFrameCallback((_) {
+    //   _checkPrivacyPolicy();
+    // });
   }
 
   // 检查隐私政策
@@ -77,6 +81,39 @@ class _HomePageState extends State<HomePage> {
   void dispose() {
     _scrollController.dispose();
     super.dispose();
+  }
+
+  // 根据日期获取正在举行的WTA赛事
+  Future<List<Map<String, dynamic>>> getCurrentWTATournaments(
+      DateTime date) async {
+    List<Map<String, dynamic>> currentTournaments = [];
+    try {
+      // 加载WTA赛事数据
+      final String jsonString =
+          await rootBundle.loadString('assets/2025_wta_tournament.json');
+      final Map<String, dynamic> tournamentData = json.decode(jsonString);
+
+      if (tournamentData.containsKey('content')) {
+        final List<dynamic> tournaments = tournamentData['content'];
+
+        for (var tournament in tournaments) {
+          // 解析比赛的开始和结束日期
+          final startDate = DateTime.parse(tournament['startDate']);
+          final endDate = DateTime.parse(tournament['endDate']);
+
+          // 检查选择的日期是否在比赛日期范围内
+          if (date.isAfter(startDate.subtract(const Duration(days: 1))) &&
+              date.isBefore(endDate.add(const Duration(days: 1)))) {
+            currentTournaments.add(tournament);
+          }
+        }
+      }
+
+      return currentTournaments;
+    } catch (e) {
+      debugPrint('获取WTA赛事时出错: $e');
+      return [];
+    }
   }
 
   Future<List<Map<String, dynamic>>> _findCurrentTournamentsScoresUrls() async {
@@ -114,6 +151,41 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  Future<void> _loadWTA() async {
+    try {
+      // 获取当前日期的WTA赛事
+      final tournaments = await getCurrentWTATournaments(selectedDate);
+
+      if (tournaments.isEmpty) {
+        setState(() {
+          _isLoading = false;
+        });
+        return;
+      }
+      List<Map<String, dynamic>> wtaMatches = [];
+      debugPrint('tou>>>>>>rnamet ${tournaments.length}');
+      // 遍历所有赛事，获取比赛数据
+      for (var tournament in tournaments) {
+        try {
+          var wtaMatchesByDate0 =
+              await ApiService.getWTAMatches(tournament, selectedDate);
+          wtaMatches.addAll(wtaMatchesByDate0);
+          debugPrint('wtaMatchesByDate0 ===== ${wtaMatchesByDate0.length}');
+        } catch (e) {
+          debugPrint('获取WTA比赛数据失败: $e');
+        }
+      }
+      // 转换为Map<String, dynamic>
+      Map<String, dynamic> wtaMatchesByDate = {_selectedDateStr: wtaMatches};
+      setState(() {
+        _displayedWTAMatches = wtaMatchesByDate[_selectedDateStr] ?? [];
+      });
+    } catch (e) {
+      print('获取WTA赛事时出错: $e');
+      return;
+    }
+  }
+
   void _onScroll() {
     if (_scrollController.position.pixels >=
             _scrollController.position.maxScrollExtent - 200 &&
@@ -132,11 +204,12 @@ class _HomePageState extends State<HomePage> {
 
     try {
       // 并行加载各类比赛数据
-      await Future.wait([
-        _loadLiveMatches(),
-        _loadCompletedMatches(),
-        _loadScheduledMatches(),
-      ]);
+      // await Future.wait([
+      //   _loadLiveMatches(),
+      //   _loadCompletedMatches(),
+      //   _loadScheduledMatches(),
+      //   _loadWTA(),
+      // ]);
 
       // 统一更新显示
       _updateDisplayedMatches();
@@ -209,8 +282,32 @@ class _HomePageState extends State<HomePage> {
     setState(() {
       selectedDate = date;
       _selectedDateStr = dateStr;
-      // 使用统一的更新方法
+      _isLoading = true; // 设置加载状态为true，显示加载指示器
+      _matches.clear(); // 清空当前比赛列表，避免显示旧数据
+    });
+
+    // 滚动到顶部，让用户看到刷新状态
+    if (_scrollController.hasClients) {
+      _scrollController.animateTo(
+        0,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    }
+
+    // 加载WTA数据
+    _loadWTA().then((_) {
+      // 加载完WTA数据后再更新显示
       _updateDisplayedMatches();
+      setState(() {
+        _isLoading = false; // 加载完成后，关闭加载指示器
+      });
+    }).catchError((error) {
+      debugPrint('加载WTA数据出错: $error');
+      setState(() {
+        _isLoading = false;
+        _errorMessage = '加载比赛数据失败: $error';
+      });
     });
   }
 
@@ -241,10 +338,6 @@ class _HomePageState extends State<HomePage> {
           if (liveMatches is List) {
             allLiveMatches
                 .addAll(ApiService.parseMatchesData(liveMatches, tournamentId));
-          } else if (liveMatches is Map) {
-            // 处理返回单个比赛数据的情况
-            allLiveMatches
-                .addAll(ApiService.parseMatchesData(liveMatches, tournamentId));
           }
         } catch (e) {
           print('获取直播比赛数据失败，tournamentId: $tournamentId, 错误: $e');
@@ -255,7 +348,7 @@ class _HomePageState extends State<HomePage> {
         _liveMatches = allLiveMatches;
         _isLoadingLive = false;
         // 更新_matches列表，确保包含最新的直播比赛
-        _updateDisplayedMatches();
+        // _updateDisplayedMatches();
       });
     } catch (e) {
       setState(() {
@@ -456,8 +549,6 @@ class _HomePageState extends State<HomePage> {
       } else {
         _displayedCompletedMatches = [];
       }
-
-      // 4. 更新比赛类型标记，便于UI区分显示
       for (var i = 0; i < _matches.length; i++) {
         if (_liveMatches.contains(_matches[i])) {
           _matches[i]['matchType'] = 'Live';
@@ -467,6 +558,11 @@ class _HomePageState extends State<HomePage> {
           _matches[i]['matchType'] = 'Completed';
         }
       }
+      if (_displayedWTAMatches.isNotEmpty) {
+        _matches.addAll(_displayedWTAMatches);
+      }
+
+      // 4. 更新比赛类型标记，便于UI区分显示
     });
   }
 
@@ -626,208 +722,250 @@ class _HomePageState extends State<HomePage> {
                       color: Colors.black,
                     ),
                     margin: const EdgeInsets.only(top: 0),
-                    child: RefreshIndicator(
-                      onRefresh: _onRefresh,
-                      color: Theme.of(context).primaryColor,
-                      backgroundColor: Theme.of(context).cardColor,
-                      child: _isRefreshing
-                          ? Center(
-                              child: CircularProgressIndicator(
-                                color: Theme.of(context).primaryColor,
-                              ),
-                            )
-                          : _matches.isEmpty && !_isLoading
-                              ? Center(
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      SvgPicture.asset(
-                                        'assets/svg/icon_no_match.svg',
-                                        width: 56,
-                                        height: 56,
-                                        colorFilter: const ColorFilter.mode(
-                                            Color.fromARGB(64, 255, 255, 255),
-                                            BlendMode.srcIn),
-                                      ),
-                                      const SizedBox(height: 16),
-                                      Text(
-                                        _errorMessage.isNotEmpty
-                                            ? _errorMessage
-                                            : 'No matches ',
-                                        style: TextStyle(
-                                          color: Colors.white.withOpacity(0.4),
-                                          fontSize: 16,
+                    child: CustomScrollView(
+                        controller: _scrollController,
+                        physics: const BouncingScrollPhysics(
+                          parent: AlwaysScrollableScrollPhysics(),
+                        ),
+                        slivers: [
+                          CupertinoSliverRefreshControl(
+                            onRefresh: _onRefresh,
+                            refreshTriggerPullDistance: 100.0,
+                            refreshIndicatorExtent: 60.0,
+                            builder: (
+                              BuildContext context,
+                              RefreshIndicatorMode refreshState,
+                              double pulledExtent,
+                              double refreshTriggerPullDistance,
+                              double refreshIndicatorExtent,
+                            ) {
+                              return Center(
+                                child: Stack(
+                                  clipBehavior: Clip.none,
+                                  children: [
+                                    Positioned(
+                                      top: 0,
+                                      left: 0,
+                                      right: 0,
+                                      child: Container(
+                                        height: pulledExtent > 60.0
+                                            ? 60.0
+                                            : pulledExtent,
+                                        child: Center(
+                                          child: CupertinoActivityIndicator(
+                                            radius: 14.0,
+                                            color: Colors.white,
+                                          ),
                                         ),
                                       ),
-                                      const SizedBox(height: 24),
-                                      Container(
-                                        decoration: BoxDecoration(
-                                          borderRadius:
-                                              BorderRadius.circular(8),
-                                          border: Border.all(
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                          SliverToBoxAdapter(
+                            child: _matches.isEmpty && !_isLoading
+                                ? Center(
+                                    child: Column(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        SvgPicture.asset(
+                                          'assets/svg/icon_no_match.svg',
+                                          width: 56,
+                                          height: 56,
+                                          colorFilter: const ColorFilter.mode(
+                                              Color.fromARGB(64, 255, 255, 255),
+                                              BlendMode.srcIn),
+                                        ),
+                                        const SizedBox(height: 16),
+                                        Text(
+                                          _errorMessage.isNotEmpty
+                                              ? _errorMessage
+                                              : 'No matches ',
+                                          style: TextStyle(
                                             color:
                                                 Colors.white.withOpacity(0.4),
-                                            width: 0.5,
+                                            fontSize: 16,
                                           ),
                                         ),
-                                        child: ElevatedButton(
-                                          onPressed: _onRefresh,
-                                          style: ElevatedButton.styleFrom(
-                                            backgroundColor:
-                                                Colors.black.withOpacity(0.3),
-                                            foregroundColor:
-                                                Colors.white.withOpacity(0.4),
-                                            elevation: 0,
-                                            padding: const EdgeInsets.symmetric(
-                                                horizontal: 30, vertical: 0),
-                                            shape: RoundedRectangleBorder(
-                                              borderRadius:
-                                                  BorderRadius.circular(8),
+                                        const SizedBox(height: 24),
+                                        Container(
+                                          decoration: BoxDecoration(
+                                            borderRadius:
+                                                BorderRadius.circular(8),
+                                            border: Border.all(
+                                              color:
+                                                  Colors.white.withOpacity(0.4),
+                                              width: 0.5,
                                             ),
                                           ),
-                                          child: const Text(
-                                            'Refresh',
-                                            style: TextStyle(
-                                              fontSize: 16,
-                                              fontWeight: FontWeight.w400,
-                                              letterSpacing: 0.5,
+                                          child: ElevatedButton(
+                                            onPressed: _onRefresh,
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor:
+                                                  Colors.black.withOpacity(0.3),
+                                              foregroundColor:
+                                                  Colors.white.withOpacity(0.4),
+                                              elevation: 0,
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                      horizontal: 30,
+                                                      vertical: 0),
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
+                                              ),
+                                            ),
+                                            child: const Text(
+                                              'Refresh',
+                                              style: TextStyle(
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.w400,
+                                                letterSpacing: 0.5,
+                                              ),
                                             ),
                                           ),
                                         ),
-                                      ),
-                                    ],
-                                  ),
-                                )
-                              : ListView.builder(
-                                  controller: _scrollController,
-                                  padding:
-                                      EdgeInsets.only(top: 16, bottom: 100),
-                                  itemCount: _matches.length + 1,
-                                  itemBuilder: (context, index) {
-                                    if (index == _matches.length) {
-                                      // 显示底部加载状态或"没有更多数据"消息
-                                      return Container(
-                                        padding: const EdgeInsets.all(16.0),
-                                        alignment: Alignment.center,
-                                        child: _isLoading
-                                            ? const CircularProgressIndicator(
-                                                valueColor:
-                                                    AlwaysStoppedAnimation<
-                                                        Color>(Colors.white),
+                                      ],
+                                    ),
+                                  )
+                                : SizedBox.shrink(),
+                          ),
+                          SliverList(
+                            delegate: SliverChildBuilderDelegate(
+                              (context, index) {
+                                if (index == _matches.length) {
+                                  // 显示底部加载状态或"没有更多数据"消息
+                                  return Container(
+                                    padding: const EdgeInsets.all(16.0),
+                                    alignment: Alignment.center,
+                                    child: _isLoading
+                                        ? const CircularProgressIndicator(
+                                            valueColor:
+                                                AlwaysStoppedAnimation<Color>(
+                                                    Colors.white),
+                                          )
+                                        : _noMoreData
+                                            ? const Text(
+                                                'No more match',
+                                                style: TextStyle(
+                                                  color: Colors.grey,
+                                                  fontSize: 14.0,
+                                                ),
                                               )
-                                            : _noMoreData
-                                                ? const Text(
-                                                    'No more match',
-                                                    style: TextStyle(
-                                                      color: Colors.grey,
-                                                      fontSize: 14.0,
-                                                    ),
-                                                  )
-                                                : const SizedBox.shrink(),
-                                      );
-                                    } else {
-                                      final match = _matches[index];
-                                      debugPrint('item ===== :${match}');
-                                      return TennisScoreCard(
-                                        player1: match['player1'] ?? '',
-                                        player2: match['player2'] ?? '',
-                                        player1Rank: match['player1Rank'] ?? '',
-                                        player2Rank: match['player2Rank'] ?? '',
-                                        player1Country:
-                                            match['player1Country'] ?? '',
-                                        player2Country:
-                                            match['player2Country'] ?? '',
-                                        player2FlagUrl:
-                                            match['player2FlagUrl'] ?? '',
-                                        player1FlagUrl:
-                                            match['player1FlagUrl'] ?? '',
-                                        player1ImageUrl:
-                                            match['player1ImageUrl'] ?? '',
-                                        player2ImageUrl:
-                                            match['player2ImageUrl'] ?? '',
-                                        serving1: match['serving1'] ?? false,
-                                        serving2: match['serving2'] ?? false,
-                                        roundInfo: match['roundInfo'] ?? '',
-                                        set1Scores: List<int>.from(
-                                            match['player1SetScores'] ?? []),
-                                        set2Scores: List<int>.from(
-                                            match['player2SetScores'] ?? []),
-                                        tiebreak1: List<int>.from(
-                                            match['player1TiebreakScores'] ??
-                                                []),
-                                        tiebreak2: List<int>.from(
-                                            match['player2TiebreakScores'] ??
-                                                []),
-                                        currentGameScore1:
-                                            match['currentGameScore1'] ?? '',
-                                        currentGameScore2:
-                                            match['currentGameScore2'] ?? '',
-                                        isLive: match['isLive'] ?? false,
-                                        matchDuration:
-                                            match['matchDuration'] ?? '',
-                                        isPlayer1Winner:
-                                            match['isPlayer1Winner'] ?? false,
-                                        isPlayer2Winner:
-                                            match['isPlayer2Winner'] ?? false,
-                                        matchType: match['matchType'] ?? false,
-                                        stadium: match['stadium'] ?? '',
-                                        matchTime: match['matchTime'] ?? '',
-                                        tournamentName:
-                                            match['tournamentName'] ?? '',
-                                        player1Id: match['player1Id'] ?? '',
-                                        player2Id: match['player2Id'] ?? '',
-                                        onDetailPressed: () {
-                                          if (match['matchType'] ==
-                                              'Scheduled') {
-                                            // 使用SnackBar提示比赛未开始
-                                            ScaffoldMessenger.of(context)
-                                                .showSnackBar(
-                                              SnackBar(
-                                                content: Text(
-                                                  '${match['player1']} vs ${match['player2']} match has not started yet',
-                                                  style: const TextStyle(
-                                                      color: Colors.white),
-                                                ),
-                                                backgroundColor:
-                                                    const Color(0xFF333333),
-                                                duration:
-                                                    const Duration(seconds: 2),
-                                              ),
-                                            );
-                                          } else {
-                                            Navigator.push(
-                                              context,
-                                              MaterialPageRoute(
-                                                builder: (context) =>
-                                                    MatchDetailsPage(
-                                                  matchId:
-                                                      match['matchId'] ?? '',
-                                                  tournamentId:
-                                                      match['tournamentId'] ??
-                                                          '',
-                                                  year: match['year'] ?? '',
-                                                  player1ImageUrl: match[
-                                                          'player1ImageUrl'] ??
+                                            : const SizedBox.shrink(),
+                                  );
+                                } else {
+                                  if (index < 0 || index >= _matches.length) {
+                                    return const SizedBox.shrink();
+                                  }
+                                  final match = _matches[index];
+                                  // 安全检查：确保访问数组元素前先检查数组是否为空
+
+                                  debugPrint('item ===== :${match}');
+                                  return TennisScoreCard(
+                                    player1: match['player1'] ?? '',
+                                    player2: match['player2'] ?? '',
+                                    player1Rank: match['player1Rank'] ?? '',
+                                    player2Rank: match['player2Rank'] ?? '',
+                                    player1Country:
+                                        match['player1Country'] ?? '',
+                                    player2Country:
+                                        match['player2Country'] ?? '',
+                                    player2FlagUrl:
+                                        match['player2FlagUrl'] ?? '',
+                                    player1FlagUrl:
+                                        match['player1FlagUrl'] ?? '',
+                                    player1ImageUrl:
+                                        match['player1ImageUrl'] ?? '',
+                                    player2ImageUrl:
+                                        match['player2ImageUrl'] ?? '',
+                                    serving1: match['serving1'] ?? false,
+                                    serving2: match['serving2'] ?? false,
+                                    roundInfo: match['roundInfo'] ?? '',
+                                    set1Scores: List<int>.from(
+                                        match['player1SetScores'] ?? []),
+                                    set2Scores: List<int>.from(
+                                        match['player2SetScores'] ?? []),
+                                    tiebreak1: List<int>.from(
+                                        match['player1TiebreakScores'] ?? []),
+                                    tiebreak2: List<int>.from(
+                                        match['player2TiebreakScores'] ?? []),
+                                    currentGameScore1:
+                                        match['currentGameScore1'] ?? '',
+                                    currentGameScore2:
+                                        match['currentGameScore2'] ?? '',
+                                    isLive: match['isLive'] ?? false,
+                                    matchDuration: match['matchDuration'] ?? '',
+                                    isPlayer1Winner:
+                                        match['isPlayer1Winner'] ?? false,
+                                    isPlayer2Winner:
+                                        match['isPlayer2Winner'] ?? false,
+                                    matchType: match['matchType'] ?? false,
+                                    stadium: match['stadium'] ?? '',
+                                    matchTime: match['matchTime'] ?? '',
+                                    tournamentName:
+                                        match['tournamentName'] ?? '',
+                                    player1Id: match['player1Id'] ?? '',
+                                    player2Id: match['player2Id'] ?? '',
+                                    typePlayer: match['typePlayer'] ?? 'atp',
+                                    onWatchPressed: () async {
+                                      final Uri url = Uri.parse(
+                                          'https://www.haixing.cc/live?type=5');
+                                      if (!await launchUrl(url)) {
+                                        throw Exception('无法打开 $url');
+                                      }
+                                    },
+                                    onDetailPressed: () {
+                                      if (match['matchType'] == 'Scheduled') {
+                                        // 使用SnackBar提示比赛未开始
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              '${match['player1']} vs ${match['player2']} match has not started yet',
+                                              style: const TextStyle(
+                                                  color: Colors.white),
+                                            ),
+                                            backgroundColor:
+                                                const Color(0xFF333333),
+                                            duration:
+                                                const Duration(seconds: 2),
+                                          ),
+                                        );
+                                      } else {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (context) =>
+                                                MatchDetailsPage(
+                                              matchId: match['matchId'] ?? '',
+                                              tournamentId:
+                                                  match['tournamentId'] ?? '',
+                                              year: match['year'] ?? '',
+                                              player1ImageUrl:
+                                                  match['player1ImageUrl'] ??
                                                       '',
-                                                  player2ImageUrl: match[
-                                                          'player2ImageUrl'] ??
+                                              player2ImageUrl:
+                                                  match['player2ImageUrl'] ??
                                                       '',
-                                                  player1FlagUrl:
-                                                      match['player1FlagUrl'] ??
-                                                          '',
-                                                  player2FlagUrl:
-                                                      match['player2FlagUrl'] ??
-                                                          '',
-                                                ),
-                                              ),
-                                            );
-                                          }
-                                        },
-                                      );
-                                    }
-                                  },
-                                ),
-                    ),
+                                              player1FlagUrl:
+                                                  match['player1FlagUrl'] ?? '',
+                                              player2FlagUrl:
+                                                  match['player2FlagUrl'] ?? '',
+                                            ),
+                                          ),
+                                        );
+                                      }
+                                    },
+                                  );
+                                }
+                              },
+                            ),
+                          ),
+                        ]),
                   ),
                 ),
               ],

@@ -227,7 +227,7 @@ class TimezoneMapping {
 
     // 2. 将UTC时间转换为本地时间
     // 这里使用toLocal()方法，它会自动应用设备的本地时区
-    return utcTime.add(Duration(hours: offset));
+    return utcTime.add(Duration(hours: offset + 2));
   }
 
   /// 检查是否需要考虑夏令时
