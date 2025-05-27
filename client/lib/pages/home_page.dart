@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:LoveGame/pages/settings_page.dart';
@@ -49,8 +50,14 @@ class _HomePageState extends State<HomePage> {
   String _selectedDateStr = '';
   List<Map<String, dynamic>> _currentTournaments = [];
   List<String> imageBanners = [
-    'https://images.unsplash.com/photo-1595435934249-5df7ed86e1c0?q=80&w=1920&auto=format&fit=crop'
+    'https://images.unsplash.com/photo-1465125672495-63cdc2fa22ed?q=80&w=2940&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D',
+    'https://images.unsplash.com/photo-1545151414-8a948e1ea54f?q=80&w=3087&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D'
+     'https://images.unsplash.com/photo-1595435934249-5df7ed86e1c0?q=80&w=1920&auto=format&fit=crop',
+
   ];
+  final PageController _pageController = PageController();
+  int _currentImageIndex = 0;
+  Timer? _autoSlideTimer;
   @override
   void initState() {
     super.initState();
@@ -58,14 +65,24 @@ class _HomePageState extends State<HomePage> {
     setState(() {
       _selectedDateStr = formatter.format(DateTime.now());
     });
-    // _loadData();
+    _loadData();
 
     _scrollController.addListener(_onScroll);
-
+    _startImageAutoSlide();
     // 检查隐私政策
-    // WidgetsBinding.instance.addPostFrameCallback((_) {
-    //   _checkPrivacyPolicy();
-    // });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkPrivacyPolicy();
+    });
+  }
+
+  void _startImageAutoSlide() {
+    _autoSlideTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
+      if (imageBanners.isNotEmpty && mounted) {
+        setState(() {
+          _currentImageIndex = (_currentImageIndex + 1) % imageBanners.length;
+        });
+      }
+    });
   }
 
   // 检查隐私政策
@@ -80,6 +97,7 @@ class _HomePageState extends State<HomePage> {
   @override
   void dispose() {
     _scrollController.dispose();
+    _autoSlideTimer?.cancel();
     super.dispose();
   }
 
@@ -204,12 +222,12 @@ class _HomePageState extends State<HomePage> {
 
     try {
       // 并行加载各类比赛数据
-      // await Future.wait([
-      //   _loadLiveMatches(),
-      //   _loadCompletedMatches(),
-      //   _loadScheduledMatches(),
-      //   _loadWTA(),
-      // ]);
+      await Future.wait([
+        _loadLiveMatches(),
+        _loadCompletedMatches(),
+        _loadScheduledMatches(),
+        _loadWTA(),
+      ]);
 
       // 统一更新显示
       _updateDisplayedMatches();
@@ -334,11 +352,8 @@ class _HomePageState extends State<HomePage> {
         try {
           final liveMatches =
               await ApiService.getLiveTournamentData(tournamentId);
-
-          if (liveMatches is List) {
-            allLiveMatches
-                .addAll(ApiService.parseMatchesData(liveMatches, tournamentId));
-          }
+          allLiveMatches
+              .addAll(ApiService.parseMatchesData(liveMatches, tournamentId));
         } catch (e) {
           print('获取直播比赛数据失败，tournamentId: $tournamentId, 错误: $e');
         }
@@ -348,7 +363,7 @@ class _HomePageState extends State<HomePage> {
         _liveMatches = allLiveMatches;
         _isLoadingLive = false;
         // 更新_matches列表，确保包含最新的直播比赛
-        // _updateDisplayedMatches();
+        _updateDisplayedMatches();
       });
     } catch (e) {
       setState(() {
@@ -421,6 +436,7 @@ class _HomePageState extends State<HomePage> {
               url['ScoresUrl'], url['Name']);
           // 合并数据
           imageBanners.add(url['TournamentImage']);
+          imageBanners.add(url['tournamentImage2']);
           matchesData.forEach((date, matches) {
             if (_completedMatchesByDate.containsKey(date)) {
               _completedMatchesByDate[date]!.addAll(matches);
@@ -525,6 +541,18 @@ class _HomePageState extends State<HomePage> {
       if (selectedDay.isAtSameMomentAs(today) && _liveMatches.isNotEmpty) {
         _matches.addAll(_liveMatches);
       }
+      List<Map<String, dynamic>> wtaLiveMatches = [];
+      List<Map<String, dynamic>> wtaOtherMatches = [];
+      for (var match in _displayedWTAMatches) {
+        if (match['matchType'] == 'Live') {
+          wtaLiveMatches.add(match);
+        } else {
+          wtaOtherMatches.add(match);
+        }
+      }
+      if (wtaLiveMatches.isNotEmpty) {
+        _matches.addAll(wtaLiveMatches);
+      }
 
       // 2. 再添加计划比赛（优先级次之）
       if (selectedDay.isAtSameMomentAs(today) || selectedDay.isAfter(today)) {
@@ -558,11 +586,9 @@ class _HomePageState extends State<HomePage> {
           _matches[i]['matchType'] = 'Completed';
         }
       }
-      if (_displayedWTAMatches.isNotEmpty) {
-        _matches.addAll(_displayedWTAMatches);
+      if (wtaOtherMatches.isNotEmpty) {
+        _matches.addAll(wtaOtherMatches);
       }
-
-      // 4. 更新比赛类型标记，便于UI区分显示
     });
   }
 
@@ -601,40 +627,97 @@ class _HomePageState extends State<HomePage> {
                   Container(
                     width: double.infinity,
                     height: double.infinity,
-                    child: Image.network(
-                      'https://images.unsplash.com/photo-1595435934249-5df7ed86e1c0?q=80&w=1920&auto=format&fit=crop',
-                      fit: BoxFit.cover,
-                      width: double.infinity,
-                      height: double.infinity,
-                      loadingBuilder: (context, child, loadingProgress) {
-                        if (loadingProgress == null) return child;
-                        return Container(
-                          color: Colors.black,
-                          child: Center(
-                            child: CircularProgressIndicator(
-                              value: loadingProgress.expectedTotalBytes != null
-                                  ? loadingProgress.cumulativeBytesLoaded /
-                                      loadingProgress.expectedTotalBytes!
-                                  : null,
-                              valueColor: const AlwaysStoppedAnimation<Color>(
-                                  Colors.white),
+                    child: imageBanners.isNotEmpty
+                        ? AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 800),
+                            transitionBuilder:
+                                (Widget child, Animation<double> animation) {
+                              return FadeTransition(
+                                opacity: animation,
+                                child: child,
+                              );
+                            },
+                            child: Image.network(
+                              key: ValueKey<String>(
+                                  imageBanners[_currentImageIndex]),
+                              imageBanners[_currentImageIndex],
+                              fit: BoxFit.cover,
+                              width: double.infinity,
+                              height: double.infinity,
+                              loadingBuilder:
+                                  (context, child, loadingProgress) {
+                                if (loadingProgress == null) return child;
+                                return Container(
+                                  color: Colors.black,
+                                  child: Center(
+                                    child: CircularProgressIndicator(
+                                      value:
+                                          loadingProgress.expectedTotalBytes !=
+                                                  null
+                                              ? loadingProgress
+                                                      .cumulativeBytesLoaded /
+                                                  loadingProgress
+                                                      .expectedTotalBytes!
+                                              : null,
+                                      valueColor:
+                                          const AlwaysStoppedAnimation<Color>(
+                                              Colors.white),
+                                    ),
+                                  ),
+                                );
+                              },
+                              errorBuilder: (context, error, stackTrace) {
+                                return Container(
+                                  color: Colors.black,
+                                  child: Center(
+                                    child: Icon(
+                                      Icons.error_outline,
+                                      color:
+                                          Theme.of(context).colorScheme.error,
+                                      size: 48,
+                                    ),
+                                  ),
+                                );
+                              },
                             ),
+                          )
+                        : Image.network(
+                            'https://images.unsplash.com/photo-1595435934249-5df7ed86e1c0?q=80&w=1920&auto=format&fit=crop',
+                            fit: BoxFit.cover,
+                            width: double.infinity,
+                            height: double.infinity,
+                            loadingBuilder: (context, child, loadingProgress) {
+                              if (loadingProgress == null) return child;
+                              return Container(
+                                color: Colors.black,
+                                child: Center(
+                                  child: CircularProgressIndicator(
+                                    value: loadingProgress.expectedTotalBytes !=
+                                            null
+                                        ? loadingProgress
+                                                .cumulativeBytesLoaded /
+                                            loadingProgress.expectedTotalBytes!
+                                        : null,
+                                    valueColor:
+                                        const AlwaysStoppedAnimation<Color>(
+                                            Colors.white),
+                                  ),
+                                ),
+                              );
+                            },
+                            errorBuilder: (context, error, stackTrace) {
+                              return Container(
+                                color: Colors.black,
+                                child: Center(
+                                  child: Icon(
+                                    Icons.error_outline,
+                                    color: Theme.of(context).colorScheme.error,
+                                    size: 48,
+                                  ),
+                                ),
+                              );
+                            },
                           ),
-                        );
-                      },
-                      errorBuilder: (context, error, stackTrace) {
-                        return Container(
-                          color: Colors.black,
-                          child: Center(
-                            child: Icon(
-                              Icons.error_outline,
-                              color: Theme.of(context).colorScheme.error,
-                              size: 48,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
                   ),
                   // 渐变遮罩
                   Positioned.fill(
@@ -722,122 +805,76 @@ class _HomePageState extends State<HomePage> {
                       color: Colors.black,
                     ),
                     margin: const EdgeInsets.only(top: 0),
-                    child: CustomScrollView(
-                        controller: _scrollController,
-                        physics: const BouncingScrollPhysics(
-                          parent: AlwaysScrollableScrollPhysics(),
-                        ),
-                        slivers: [
-                          CupertinoSliverRefreshControl(
-                            onRefresh: _onRefresh,
-                            refreshTriggerPullDistance: 100.0,
-                            refreshIndicatorExtent: 60.0,
-                            builder: (
-                              BuildContext context,
-                              RefreshIndicatorMode refreshState,
-                              double pulledExtent,
-                              double refreshTriggerPullDistance,
-                              double refreshIndicatorExtent,
-                            ) {
-                              return Center(
-                                child: Stack(
-                                  clipBehavior: Clip.none,
-                                  children: [
-                                    Positioned(
-                                      top: 0,
-                                      left: 0,
-                                      right: 0,
-                                      child: Container(
-                                        height: pulledExtent > 60.0
-                                            ? 60.0
-                                            : pulledExtent,
-                                        child: Center(
-                                          child: CupertinoActivityIndicator(
-                                            radius: 14.0,
-                                            color: Colors.white,
-                                          ),
+                    child: RefreshIndicator(
+                      onRefresh: _onRefresh,
+                      color: Colors.white,
+                      backgroundColor: Colors.black,
+                      child: _matches.isEmpty && !_isLoading
+                          ? Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  SvgPicture.asset(
+                                    'assets/svg/icon_no_match.svg',
+                                    width: 56,
+                                    height: 56,
+                                    colorFilter: const ColorFilter.mode(
+                                        Color.fromARGB(64, 255, 255, 255),
+                                        BlendMode.srcIn),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    _errorMessage.isNotEmpty
+                                        ? _errorMessage
+                                        : 'No matches ',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 24),
+                                  Container(
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(
+                                        color: Colors.white,
+                                        width: 0.5,
+                                      ),
+                                    ),
+                                    child: ElevatedButton(
+                                      onPressed: _onRefresh,
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.black,
+                                        foregroundColor: Colors.white,
+                                        elevation: 0,
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 30, vertical: 0),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(8),
+                                        ),
+                                      ),
+                                      child: const Text(
+                                        'Refresh',
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w400,
+                                          letterSpacing: 0.5,
                                         ),
                                       ),
                                     ),
-                                  ],
-                                ),
-                              );
-                            },
-                          ),
-                          SliverToBoxAdapter(
-                            child: _matches.isEmpty && !_isLoading
-                                ? Center(
-                                    child: Column(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: [
-                                        SvgPicture.asset(
-                                          'assets/svg/icon_no_match.svg',
-                                          width: 56,
-                                          height: 56,
-                                          colorFilter: const ColorFilter.mode(
-                                              Color.fromARGB(64, 255, 255, 255),
-                                              BlendMode.srcIn),
-                                        ),
-                                        const SizedBox(height: 16),
-                                        Text(
-                                          _errorMessage.isNotEmpty
-                                              ? _errorMessage
-                                              : 'No matches ',
-                                          style: TextStyle(
-                                            color:
-                                                Colors.white.withOpacity(0.4),
-                                            fontSize: 16,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 24),
-                                        Container(
-                                          decoration: BoxDecoration(
-                                            borderRadius:
-                                                BorderRadius.circular(8),
-                                            border: Border.all(
-                                              color:
-                                                  Colors.white.withOpacity(0.4),
-                                              width: 0.5,
-                                            ),
-                                          ),
-                                          child: ElevatedButton(
-                                            onPressed: _onRefresh,
-                                            style: ElevatedButton.styleFrom(
-                                              backgroundColor:
-                                                  Colors.black.withOpacity(0.3),
-                                              foregroundColor:
-                                                  Colors.white.withOpacity(0.4),
-                                              elevation: 0,
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                      horizontal: 30,
-                                                      vertical: 0),
-                                              shape: RoundedRectangleBorder(
-                                                borderRadius:
-                                                    BorderRadius.circular(8),
-                                              ),
-                                            ),
-                                            child: const Text(
-                                              'Refresh',
-                                              style: TextStyle(
-                                                fontSize: 16,
-                                                fontWeight: FontWeight.w400,
-                                                letterSpacing: 0.5,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  )
-                                : SizedBox.shrink(),
-                          ),
-                          SliverList(
-                            delegate: SliverChildBuilderDelegate(
-                              (context, index) {
+                                  ),
+                                ],
+                              ),
+                            )
+                          : ListView.builder(
+                              controller: _scrollController,
+                              physics: const AlwaysScrollableScrollPhysics(
+                                parent: BouncingScrollPhysics(),
+                              ),
+                              itemCount: _matches.length + 1,
+                              itemBuilder: (context, index) {
                                 if (index == _matches.length) {
-                                  // 显示底部加载状态或"没有更多数据"消息
                                   return Container(
                                     padding: const EdgeInsets.all(16.0),
                                     alignment: Alignment.center,
@@ -857,115 +894,114 @@ class _HomePageState extends State<HomePage> {
                                               )
                                             : const SizedBox.shrink(),
                                   );
-                                } else {
-                                  if (index < 0 || index >= _matches.length) {
-                                    return const SizedBox.shrink();
-                                  }
-                                  final match = _matches[index];
-                                  // 安全检查：确保访问数组元素前先检查数组是否为空
-
-                                  debugPrint('item ===== :${match}');
-                                  return TennisScoreCard(
-                                    player1: match['player1'] ?? '',
-                                    player2: match['player2'] ?? '',
-                                    player1Rank: match['player1Rank'] ?? '',
-                                    player2Rank: match['player2Rank'] ?? '',
-                                    player1Country:
-                                        match['player1Country'] ?? '',
-                                    player2Country:
-                                        match['player2Country'] ?? '',
-                                    player2FlagUrl:
-                                        match['player2FlagUrl'] ?? '',
-                                    player1FlagUrl:
-                                        match['player1FlagUrl'] ?? '',
-                                    player1ImageUrl:
-                                        match['player1ImageUrl'] ?? '',
-                                    player2ImageUrl:
-                                        match['player2ImageUrl'] ?? '',
-                                    serving1: match['serving1'] ?? false,
-                                    serving2: match['serving2'] ?? false,
-                                    roundInfo: match['roundInfo'] ?? '',
-                                    set1Scores: List<int>.from(
-                                        match['player1SetScores'] ?? []),
-                                    set2Scores: List<int>.from(
-                                        match['player2SetScores'] ?? []),
-                                    tiebreak1: List<int>.from(
-                                        match['player1TiebreakScores'] ?? []),
-                                    tiebreak2: List<int>.from(
-                                        match['player2TiebreakScores'] ?? []),
-                                    currentGameScore1:
-                                        match['currentGameScore1'] ?? '',
-                                    currentGameScore2:
-                                        match['currentGameScore2'] ?? '',
-                                    isLive: match['isLive'] ?? false,
-                                    matchDuration: match['matchDuration'] ?? '',
-                                    isPlayer1Winner:
-                                        match['isPlayer1Winner'] ?? false,
-                                    isPlayer2Winner:
-                                        match['isPlayer2Winner'] ?? false,
-                                    matchType: match['matchType'] ?? false,
-                                    stadium: match['stadium'] ?? '',
-                                    matchTime: match['matchTime'] ?? '',
-                                    tournamentName:
-                                        match['tournamentName'] ?? '',
-                                    player1Id: match['player1Id'] ?? '',
-                                    player2Id: match['player2Id'] ?? '',
-                                    typePlayer: match['typePlayer'] ?? 'atp',
-                                    onWatchPressed: () async {
-                                      final Uri url = Uri.parse(
-                                          'https://www.haixing.cc/live?type=5');
-                                      if (!await launchUrl(url)) {
-                                        throw Exception('无法打开 $url');
-                                      }
-                                    },
-                                    onDetailPressed: () {
-                                      if (match['matchType'] == 'Scheduled') {
-                                        // 使用SnackBar提示比赛未开始
-                                        ScaffoldMessenger.of(context)
-                                            .showSnackBar(
-                                          SnackBar(
-                                            content: Text(
-                                              '${match['player1']} vs ${match['player2']} match has not started yet',
-                                              style: const TextStyle(
-                                                  color: Colors.white),
-                                            ),
-                                            backgroundColor:
-                                                const Color(0xFF333333),
-                                            duration:
-                                                const Duration(seconds: 2),
-                                          ),
-                                        );
-                                      } else {
-                                        Navigator.push(
-                                          context,
-                                          MaterialPageRoute(
-                                            builder: (context) =>
-                                                MatchDetailsPage(
-                                              matchId: match['matchId'] ?? '',
-                                              tournamentId:
-                                                  match['tournamentId'] ?? '',
-                                              year: match['year'] ?? '',
-                                              player1ImageUrl:
-                                                  match['player1ImageUrl'] ??
-                                                      '',
-                                              player2ImageUrl:
-                                                  match['player2ImageUrl'] ??
-                                                      '',
-                                              player1FlagUrl:
-                                                  match['player1FlagUrl'] ?? '',
-                                              player2FlagUrl:
-                                                  match['player2FlagUrl'] ?? '',
-                                            ),
-                                          ),
-                                        );
-                                      }
-                                    },
-                                  );
                                 }
-                              },
-                            ),
-                          ),
-                        ]),
+                                final match = _matches[index];
+                                // 安全检查：确保访问数组元素前先检查数组是否为空
+
+                                debugPrint('item ===== :${match}');
+                                return TennisScoreCard(
+                                  player1: match['player1'] ?? '',
+                                  player2: match['player2'] ?? '',
+                                  player1Rank: match['player1Rank'] ?? '',
+                                  player2Rank: match['player2Rank'] ?? '',
+                                  player1Country: match['player1Country'] ?? '',
+                                  player2Country: match['player2Country'] ?? '',
+                                  player2FlagUrl: match['player2FlagUrl'] ?? '',
+                                  player1FlagUrl: match['player1FlagUrl'] ?? '',
+                                  player1ImageUrl:
+                                      match['player1ImageUrl'] ?? '',
+                                  player2ImageUrl:
+                                      match['player2ImageUrl'] ?? '',
+                                  serving1: match['serving1'] ?? false,
+                                  serving2: match['serving2'] ?? false,
+                                  roundInfo: match['roundInfo'] ?? '',
+                                  set1Scores: List<int>.from(
+                                      match['player1SetScores'] ?? []),
+                                  set2Scores: List<int>.from(
+                                      match['player2SetScores'] ?? []),
+                                  tiebreak1: List<int>.from(
+                                      match['player1TiebreakScores'] ?? []),
+                                  tiebreak2: List<int>.from(
+                                      match['player2TiebreakScores'] ?? []),
+                                  currentGameScore1:
+                                      match['currentGameScore1'] ?? '',
+                                  currentGameScore2:
+                                      match['currentGameScore2'] ?? '',
+                                  isLive: match['isLive'] ?? false,
+                                  matchDuration: match['matchDuration'] ?? '',
+                                  isPlayer1Winner:
+                                      match['isPlayer1Winner'] ?? false,
+                                  isPlayer2Winner:
+                                      match['isPlayer2Winner'] ?? false,
+                                  matchType: match['matchType'] ?? false,
+                                  stadium: match['stadium'] ?? '',
+                                  matchTime: match['matchTime'] ?? '',
+                                  tournamentName: match['tournamentName'] ?? '',
+                                  player1Id: match['player1Id'] ?? '',
+                                  player2Id: match['player2Id'] ?? '',
+                                  typePlayer: match['typePlayer'] ?? 'atp',
+                                  onWatchPressed: () async {
+                                    final Uri url = Uri.parse(
+                                        'https://www.haixing.cc/live?type=5');
+                                    if (!await launchUrl(url)) {
+                                      throw Exception('无法打开 $url');
+                                    }
+                                  },
+                                  onDetailPressed: () {
+                                    if (match['matchType'] == 'Scheduled') {
+                                      // 使用SnackBar提示比赛未开始
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            '${match['player1']} vs ${match['player2']} match has not started yet',
+                                            style: const TextStyle(
+                                                color: Colors.white),
+                                          ),
+                                          backgroundColor:
+                                              const Color(0xFF333333),
+                                          duration: const Duration(seconds: 2),
+                                        ),
+                                      );
+                                    } else {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (context) =>
+                                              MatchDetailsPage(
+                                            matchId: match['matchId'] ?? '',
+                                            tournamentId:
+                                                match['tournamentId'] ?? '',
+                                            year: match['year'] ?? '',
+                                            player1ImageUrl:
+                                                match['player1ImageUrl'] ?? '',
+                                            player2ImageUrl:
+                                                match['player2ImageUrl'] ?? '',
+                                            player1FlagUrl:
+                                                match['player1FlagUrl'] ?? '',
+                                            player2FlagUrl:
+                                                match['player2FlagUrl'] ?? '',
+                                            typeMatch:
+                                                match['typePlayer'] ?? 'atp',
+                                            // 添加传入的比分数据，支持5盘
+                                            inputSetScores: {
+                                              'player1':
+                                                  match['player1SetScores'] ??
+                                                      [],
+                                              'player2':
+                                                  match['player2SetScores'] ??
+                                                      []
+                                            },
+                                            player1Id: match['player1Id'] ?? '',
+                                            player2Id: match['player2Id'] ?? '',
+                                          ),
+                                        ),
+                                      );
+                                    }
+                                  },
+                                );
+                              }),
+                    ),
                   ),
                 ),
               ],

@@ -2,6 +2,7 @@ import 'package:LoveGame/pages/player_details_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'dart:math' as math;
 
 class TennisScoreCard extends StatelessWidget {
   final String player1;
@@ -78,8 +79,14 @@ class TennisScoreCard extends StatelessWidget {
       List<String> nameParts = name.split(' ');
       if (nameParts.length > 1) {
         String firstName = nameParts.first;
+
         String lastName = nameParts.last;
-        return '${firstName[0]}. $lastName';
+        if (lastName.contains('-')) {
+          List<String> lastNameParts = name.split('-');
+          return '${firstName[0]}. ${lastNameParts[1]}';
+        } else {
+          return '${firstName[0]}. $lastName';
+        }
       }
     }
     return name;
@@ -92,7 +99,7 @@ class TennisScoreCard extends StatelessWidget {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     const backgroundColor = Color(0xFF0C0D0C); // 使用深灰色背景
     final borderColor = Colors.white.withOpacity(0.04); // 减小边框透明度，使其更加微妙
-    
+
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6.0),
       decoration: BoxDecoration(
@@ -201,7 +208,15 @@ class TennisScoreCard extends StatelessWidget {
                   final availableWidth = constraints.maxWidth;
                   final playerColumnWidth = availableWidth * 0.65; // 球员名列宽度
                   // 确保所有行有相同数量的列
-                  const totalColumns = 5; // +1 是球员列
+                  // 根据比赛局数动态确定总列数
+                  // 获取最大局数，考虑到两位球员的得分
+                  int maxSets = math.max(set1Scores.length, set2Scores.length);
+                  // 确保至少显示3局，最多显示5局
+                  maxSets = math.max(3, math.min(5, maxSets));
+                  // 总列数 = 球员列 + 当前局分列(如果是直播) + 实际局数
+                  final int totalColumns = 1 + (isLive ? 1 : 0) + maxSets;
+
+                  // 计算每个比分列的宽度
                   final scoreColumnWidth =
                       (availableWidth - playerColumnWidth) / (totalColumns - 1);
 
@@ -216,14 +231,7 @@ class TennisScoreCard extends StatelessWidget {
                   }
                   return Table(
                     defaultColumnWidth: FixedColumnWidth(scoreColumnWidth),
-                    columnWidths: {
-                      0: FixedColumnWidth(playerColumnWidth), // 球员名字
-                      1: FixedColumnWidth(scoreColumnWidth), //正在直播的局分
-                      2: FixedColumnWidth(scoreColumnWidth), // 第一局
-                      3: FixedColumnWidth(scoreColumnWidth), // 第二局
-                      4: FixedColumnWidth(scoreColumnWidth), // 第三局
-                      // 当前局分列（仅直播时显示）
-                    },
+                    columnWidths: columnWidths,
                     children: [
                       TableRow(
                         children: [
@@ -386,66 +394,49 @@ class TennisScoreCard extends StatelessWidget {
                               ),
                             ),
                           ),
-                          TableCell(
-                            verticalAlignment:
-                                TableCellVerticalAlignment.middle,
-                            child: Container(
-                              alignment: Alignment.centerRight,
-                              padding: const EdgeInsets.only(right: 8.0),
-                              child: isLive
-                                  ? Text(
-                                      currentGameScore1,
-                                      style: const TextStyle(
-                                        color: Color(0xFF94E831),
-                                        fontSize: 14.0,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    )
-                                  : const SizedBox(), // 非直播时为空
-                            ),
-                          ),
-                          TableCell(
-                            verticalAlignment:
-                                TableCellVerticalAlignment.middle,
-                            child: Container(
-                              alignment: Alignment.centerRight,
-                              child: _buildSetScoreWidget(
-                                set1Scores.length > 0 ? set1Scores[0] : 0,
-                                set2Scores.length > 0 ? set2Scores[0] : 0,
-                                tiebreak1.length > 0 ? tiebreak1[0] : 0,
-                                tiebreak2.length > 0 ? tiebreak2[0] : 0,
-                                isPlayer1: true,
+                          if (isLive)
+                            TableCell(
+                              verticalAlignment:
+                                  TableCellVerticalAlignment.middle,
+                              child: Container(
+                                alignment: Alignment.centerRight,
+                                padding: const EdgeInsets.only(right: 8.0),
+                                child: isLive
+                                    ? Text(
+                                        currentGameScore1,
+                                        style: const TextStyle(
+                                          color: Color(0xFF94E831),
+                                          fontSize: 14.0,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      )
+                                    : const SizedBox(), // 非直播时为空
                               ),
                             ),
-                          ),
-                          TableCell(
-                            verticalAlignment:
-                                TableCellVerticalAlignment.middle,
-                            child: Container(
-                              alignment: Alignment.centerRight,
-                              child: _buildSetScoreWidget(
-                                set1Scores.length > 1 ? set1Scores[1] : 0,
-                                set2Scores.length > 1 ? set2Scores[1] : 0,
-                                tiebreak1.length > 1 ? tiebreak1[1] : 0,
-                                tiebreak2.length > 1 ? tiebreak2[1] : 0,
-                                isPlayer1: true,
+                          // 动态生成局分列
+                          for (int i = 0; i < maxSets; i++)
+                            TableCell(
+                              verticalAlignment:
+                                  TableCellVerticalAlignment.middle,
+                              child: Container(
+                                alignment: Alignment.centerRight,
+                                child: _buildSetScoreWidget(
+                                  set1Scores.length > i
+                                      ? set1Scores[i]
+                                      : 0, // 球员1的分数
+                                  set2Scores.length > i
+                                      ? set2Scores[i]
+                                      : 0, // 对手(球员2)的分数
+                                  tiebreak1.length > i
+                                      ? tiebreak1[i]
+                                      : 0, // 球员1的抢七分
+                                  tiebreak2.length > i
+                                      ? tiebreak2[i]
+                                      : 0, // 对手的抢七分
+                                  isPlayer1: true,
+                                ),
                               ),
                             ),
-                          ),
-                          TableCell(
-                            verticalAlignment:
-                                TableCellVerticalAlignment.middle,
-                            child: Container(
-                              alignment: Alignment.centerRight,
-                              child: _buildSetScoreWidget(
-                                set1Scores.length > 2 ? set1Scores[2] : 0,
-                                set2Scores.length > 2 ? set2Scores[2] : 0,
-                                tiebreak1.length > 2 ? tiebreak1[2] : 0,
-                                tiebreak2.length > 2 ? tiebreak2[2] : 0,
-                                isPlayer1: true,
-                              ),
-                            ),
-                          ),
                         ],
                       ),
                       // 球员之间的间隔
@@ -453,14 +444,12 @@ class TennisScoreCard extends StatelessWidget {
                         children: [
                           TableCell(
                               child: SizedBox(height: isLive ? 6.0 : 10.0)),
-                          TableCell(
-                              child: SizedBox(height: isLive ? 6.0 : 10.0)),
-                          TableCell(
-                              child: SizedBox(height: isLive ? 6.0 : 10.0)),
-                          TableCell(
-                              child: SizedBox(height: isLive ? 6.0 : 10.0)),
-                          TableCell(
-                              child: SizedBox(height: isLive ? 6.0 : 10.0)),
+                          if (isLive)
+                            TableCell(
+                                child: SizedBox(height: isLive ? 6.0 : 10.0)),
+                          for (int i = 0; i < maxSets; i++)
+                            TableCell(
+                                child: SizedBox(height: isLive ? 6.0 : 10.0)),
                         ],
                       ),
                       // 球员2信息
@@ -631,66 +620,48 @@ class TennisScoreCard extends StatelessWidget {
                                   ],
                                 ),
                               )),
-                          TableCell(
-                            verticalAlignment:
-                                TableCellVerticalAlignment.middle,
-                            child: Container(
-                              alignment: Alignment.centerRight,
-                              padding: const EdgeInsets.only(right: 8.0),
-                              child: isLive
-                                  ? Text(
-                                      currentGameScore2,
-                                      style: const TextStyle(
-                                        color: Color(0xFF94E831),
-                                        fontSize: 14.0,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    )
-                                  : const SizedBox(), // 非直播时为空
-                            ),
-                          ),
-                          TableCell(
-                            verticalAlignment:
-                                TableCellVerticalAlignment.middle,
-                            child: Container(
-                              alignment: Alignment.centerRight,
-                              child: _buildSetScoreWidget(
-                                set2Scores.length > 0 ? set2Scores[0] : 0,
-                                set1Scores.length > 0 ? set1Scores[0] : 0,
-                                tiebreak2.length > 0 ? tiebreak2[0] : 0,
-                                tiebreak1.length > 0 ? tiebreak1[0] : 0,
-                                isPlayer1: false,
+                          if (isLive)
+                            TableCell(
+                              verticalAlignment:
+                                  TableCellVerticalAlignment.middle,
+                              child: Container(
+                                alignment: Alignment.centerRight,
+                                padding: const EdgeInsets.only(right: 8.0),
+                                child: isLive
+                                    ? Text(
+                                        currentGameScore2,
+                                        style: const TextStyle(
+                                          color: Color(0xFF94E831),
+                                          fontSize: 14.0,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      )
+                                    : const SizedBox(), // 非直播时为空
                               ),
                             ),
-                          ),
-                          TableCell(
-                            verticalAlignment:
-                                TableCellVerticalAlignment.middle,
-                            child: Container(
-                              alignment: Alignment.centerRight,
-                              child: _buildSetScoreWidget(
-                                set2Scores.length > 1 ? set2Scores[1] : 0,
-                                set1Scores.length > 1 ? set1Scores[1] : 0,
-                                tiebreak2.length > 1 ? tiebreak2[1] : 0,
-                                tiebreak1.length > 1 ? tiebreak1[1] : 0,
-                                isPlayer1: false,
+                          for (int i = 0; i < maxSets; i++)
+                            TableCell(
+                              verticalAlignment:
+                                  TableCellVerticalAlignment.middle,
+                              child: Container(
+                                alignment: Alignment.centerRight,
+                                child: _buildSetScoreWidget(
+                                  set2Scores.length > i
+                                      ? set2Scores[i]
+                                      : 0, // 球员2的分数
+                                  set1Scores.length > i
+                                      ? set1Scores[i]
+                                      : 0, // 对手(球员1)的分数
+                                  tiebreak2.length > i
+                                      ? tiebreak2[i]
+                                      : 0, // 球员2的抢七分
+                                  tiebreak1.length > i
+                                      ? tiebreak1[i]
+                                      : 0, // 对手的抢七分
+                                  isPlayer1: false,
+                                ),
                               ),
                             ),
-                          ),
-                          TableCell(
-                            verticalAlignment:
-                                TableCellVerticalAlignment.middle,
-                            child: Container(
-                              alignment: Alignment.centerRight,
-                              child: _buildSetScoreWidget(
-                                set2Scores.length > 2 ? set2Scores[2] : 0,
-                                set1Scores.length > 2 ? set1Scores[2] : 0,
-                                tiebreak2.length > 2 ? tiebreak2[2] : 0,
-                                tiebreak1.length > 2 ? tiebreak1[2] : 0,
-                                isPlayer1: false,
-                              ),
-                            ),
-                          ),
                         ],
                       ),
                     ],
@@ -714,7 +685,12 @@ class TennisScoreCard extends StatelessWidget {
                           Text(
                             matchTime != null && matchTime!.isNotEmpty
                                 ? matchTime!.replaceAll(RegExp(r'[\r\n]+'), '')
-                                : 'To Be Determined',
+                                : matchType.toString().toLowerCase() ==
+                                            'completed' ||
+                                        matchType.toString().toLowerCase() ==
+                                            'live'
+                                    ? '-'
+                                    : 'To Be Determined',
                             style: TextStyle(
                               color: Colors.white.withOpacity(0.6),
                               fontSize: 12,
@@ -877,26 +853,6 @@ class TennisScoreCard extends StatelessWidget {
     // 直接查找此列的索引
     debugPrint(
         'playerScore: $playerScore, opponentScore: $opponentScore,playerTie: $playerTie, opponentTie: $opponentTie');
-    // int setIndex = -1;
-    // for (int i = 0; i < set1Scores.length; i++) {
-    //   if (isPlayer1 &&
-    //           set1Scores[i] == playerScore &&
-    //           set2Scores[i] == opponentScore ||
-    //       !isPlayer1 &&
-    //           set2Scores[i] == playerScore &&
-    //           set1Scores[i] == opponentScore) {
-    //     setIndex = i;
-    //     break;
-    //   }
-    // }
-
-    // 获取对应的抢七小分
-    // int tiebreakPoint = 0;
-    // if (setIndex >= 0) {
-    //   tiebreakPoint = isPlayer1
-    //       ? (tiebreak1.length > setIndex ? tiebreak1[setIndex] : 0)
-    //       : (tiebreak2.length > setIndex ? tiebreak2[setIndex] : 0);
-    // }
 
     // 抢七情况的处理
     bool isStandardTiebreak = (playerTie != 0 || opponentTie != 0) ||

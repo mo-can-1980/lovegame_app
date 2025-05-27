@@ -5,7 +5,7 @@
  * @version: 1.0
  * @Date: 2025-04-21 17:22:17
  * @LastEditors: ouchao
- * @LastEditTime: 2025-05-21 11:00:50
+ * @LastEditTime: 2025-05-24 20:19:49
  */
 import 'package:LoveGame/utils/timezone_mapping.dart';
 import 'package:html/parser.dart';
@@ -18,6 +18,331 @@ import 'package:intl/intl.dart';
 import 'package:html/dom.dart' as dom;
 
 class ApiService {
+  // 获取WTA比赛统计数据
+  static Future<Map<String, dynamic>> getWTAMatchStats(
+      String url, String tournament, String matchId) async {
+    try {
+      final matchScore = await getWTAMatcheScore(tournament, matchId);
+      debugPrint("matchScore ((()))$matchScore");
+      if (matchScore.isEmpty) {
+        return {};
+      }
+      String matchUrl =
+          'https://www.wtatennis.com/tournaments/${tournament}/${matchScore['Tournament']['city'].toString().toLowerCase()}/2025/scores/${matchId}';
+      final Uri uri = _buildUri(matchUrl, 'wta');
+      final response = await http.get(
+        uri,
+        headers: {
+          'Accept': 'text/html',
+          'User-Agent':
+              'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        },
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final document = parse(response.body);
+        Map<String, dynamic> matchStats = {
+          'Tournament': {},
+          'Match': {
+            "TeamTieResults": null,
+            "MatchId": matchId,
+            "IsDoubles": false,
+            "RoundName": "",
+            "Round": {
+              "RoundId": 4,
+              "ShortName": "R16",
+              "LongName": "Round of 16",
+              "ScRoundName": "Round of 16"
+            },
+            "CourtName": "",
+            "MatchTimeTotal": matchScore['MatchTimeTotal'],
+            "MatchTime": matchScore['MatchTimeTotal'],
+            "ExtendedMessage": "",
+            "Message": "",
+            "MatchStatus": matchScore['MatchStatus'],
+            "Status": "F",
+            "ServerTeam": -1,
+            "LastServer": null,
+            "WinningPlayerId": "MM58",
+            "Winner": "MM58",
+            "DateSeq": "9",
+            "IsQualifier": false,
+            "IsWatchLive": null,
+            "NumberOfSets": matchScore['NumSets'],
+            "ScoringSystem": "1",
+            "Reason": null,
+            'PlayerTeam': {
+              'Player': {
+                'PlayerId': "${matchScore['PlayerIDA']}",
+                "PlayerCountry": "${matchScore['PlayerCountryA']}",
+                "PlayerFirstName": "${matchScore['PlayerNameFirstA']}",
+                "PlayerLastName": "${matchScore['PlayerNameLastA']}",
+                "PlayerCountryName": ""
+              },
+              'SetScores': [],
+              'YearToDateStats': {}
+            },
+            'OpponentTeam': {
+              'Player': {
+                'PlayerId': "${matchScore['PlayerIDB']}",
+                "PlayerCountry": "${matchScore['PlayerCountryB']}",
+                "PlayerFirstName": "${matchScore['PlayerNameFirstB']}",
+                "PlayerLastName": "${matchScore['PlayerNameLastB']}",
+                "PlayerCountryName": ""
+              },
+              'SetScores': [],
+              'YearToDateStats': {}
+            }
+          }
+        };
+
+        // 获取所有统计数据标签页内容
+        final tabContents =
+            document.getElementsByClassName('mc-stats__tab-content');
+
+        if (tabContents.isNotEmpty) {
+          // 第一个是比赛总体统计
+          final matchStatsBlock = _parseWTAStatsBlock(tabContents[0], 0);
+          matchStats['Match']['PlayerTeam']['SetScores'].add({
+            'Stats': matchStatsBlock['player1Stats'],
+            'SetScore': null,
+            'TieBreakScore': null
+          });
+
+          matchStats['Match']['OpponentTeam']['SetScores'].add({
+            'Stats': matchStatsBlock['player2Stats'],
+            'SetScore': null,
+            'TieBreakScore': null
+          });
+
+          debugPrint(
+              'matchStats Match PlayerTeam====: ${matchStats['Match']['PlayerTeam']['SetScores']}');
+          debugPrint(
+              'matchStats Match OpponentTeam====: ${matchStats['Match']['OpponentTeam']['SetScores']}');
+
+          // 剩余的是每盘统计
+          for (var i = 1; i < tabContents.length; i++) {
+            final setStats = _parseWTAStatsBlock(tabContents[i], i);
+            if (setStats['player1Stats']['ServiceStats'] == null) {
+              continue;
+            }
+            String setScore1 = '';
+            String setScore2 = '';
+            String tie1 = '';
+            String tie2 = '';
+            switch (i) {
+              case 1:
+                setScore1 = "${matchScore['ScoreSet1A']}";
+                setScore2 = "${matchScore['ScoreSet1B']}";
+                tie1 = "${matchScore['ScoreSet1A']}";
+                tie2 = "${matchScore['ScoreSet1B']}";
+                break;
+              case 2:
+                setScore1 = "${matchScore['ScoreSet2A']}";
+                setScore2 = "${matchScore['ScoreSet2B']}";
+                tie1 = "${matchScore['ScoreSet1A']}";
+                tie2 = "${matchScore['ScoreSet1B']}";
+                break;
+              case 3:
+                setScore1 = "${matchScore['ScoreSet3A']}";
+                setScore2 = "${matchScore['ScoreSet3B']}";
+                tie1 = "${matchScore['ScoreSet1A']}";
+                tie2 = "${matchScore['ScoreSet1B']}";
+                break;
+              default:
+                break;
+            }
+
+            matchStats['Match']['PlayerTeam']['SetScores'].add({
+              'Stats': setStats['player1Stats'],
+              'SetScore': setScore1.isNotEmpty ? setScore1 : null,
+              'TieBreakScore': null
+            });
+            matchStats['Match']['OpponentTeam']['SetScores'].add({
+              'Stats': setStats['player2Stats'],
+              'SetScore': setScore2.isNotEmpty ? setScore2 : null,
+              'TieBreakScore': null
+            });
+          }
+        }
+
+        return matchStats;
+      } else {
+        throw Exception('获取WTA比赛统计数据失败: ${response.statusCode}');
+      }
+    } catch (e) {
+      debugPrint('获取WTA比赛统计数据异常: $e');
+      return {};
+    }
+  }
+
+  // 解析WTA统计数据块
+  static Map<String, dynamic> _parseWTAStatsBlock(dom.Element block, index) {
+    Map<String, dynamic> stats = {
+      'player1Stats': {}, // 初始化 player1Stats
+      'player2Stats': {} // 初始化 player2Stats
+    };
+    // 获取所有统计块
+    final statBlocks = block.getElementsByClassName('compare-stats-block');
+
+    int i = 0;
+    for (var statBlock in statBlocks) {
+      if (i == 0) {
+        i++;
+        continue;
+      }
+      final rows = statBlock.getElementsByClassName('compare-stats-block__row');
+      // 第一个块：发球统计
+      if (stats['player1Stats']['ServiceStats'] == null) {
+        Map<String, dynamic> serviceStats1 = {};
+        Map<String, dynamic> serviceStats2 = {};
+        for (var row in rows) {
+          final label = row
+              .getElementsByClassName('compare-stats-block__label')
+              .first
+              .text
+              .trim()
+              .replaceAll(' ', '');
+          final cols =
+              row.getElementsByClassName('compare-stats-block__content-col');
+
+          if (cols.length >= 3) {
+            final player1Value = cols[0].text.trim();
+            final player2Value = cols[2].text.trim();
+            // 检查是否有详细数据
+            final details1 =
+                cols[0].getElementsByClassName('compare-stats-block__detail');
+            if (details1.isNotEmpty) {
+              // 处理类似 "10/100" 的数据
+              final player1Parts = details1.first.text.trim().split('/');
+              serviceStats1[label] = {
+                'Dividend': int.tryParse(player1Parts[0]) ?? 0,
+                'Divisor': int.tryParse(player1Parts[1]) ?? 0
+              };
+            } else {
+              serviceStats1[label] = {
+                'Number': int.tryParse(player1Value) ?? 0,
+              };
+            }
+            final details2 =
+                cols[2].getElementsByClassName('compare-stats-block__detail');
+            if (details2.isNotEmpty) {
+              // 处理类似 "10/100" 的数据
+              final player2Parts = details2.first.text.trim().split('/');
+              serviceStats2[label] = {
+                'Dividend': int.tryParse(player2Parts[0]) ?? 0,
+                'Divisor': int.tryParse(player2Parts[1]) ?? 0
+              };
+            } else {
+              serviceStats2[label] = {
+                'Number': int.tryParse(player2Value) ?? 0,
+              };
+            }
+          }
+        }
+
+        stats['player1Stats']['ServiceStats'] = serviceStats1;
+        stats['player2Stats']['ServiceStats'] = serviceStats2;
+      }
+      // 第二个块：接发球统计
+      else if (stats['player1Stats']['ReturnStats'] == null) {
+        Map<String, dynamic> returnStats1 = {};
+        Map<String, dynamic> returnStats2 = {};
+        for (var row in rows) {
+          final label = row
+              .getElementsByClassName('compare-stats-block__label')
+              .first
+              .text
+              .trim()
+              .replaceAll(' ', '');
+          final cols =
+              row.getElementsByClassName('compare-stats-block__content-col');
+
+          if (cols.length >= 3) {
+            final player1Value = cols[0].text.trim();
+            final player2Value = cols[2].text.trim();
+
+            final details1 =
+                cols[0].getElementsByClassName('compare-stats-block__detail');
+            if (details1.isNotEmpty) {
+              final player1Parts = details1.first.text.trim().split('/');
+
+              returnStats1[label] = {
+                'Dividend': int.tryParse(player1Parts[0]) ?? 0,
+                'Divisor': int.tryParse(player1Parts[1]) ?? 0
+              };
+              debugPrint("label=============$label ${returnStats1[label]}");
+            } else {
+              returnStats1[label] = {'Number': int.tryParse(player1Value) ?? 0};
+            }
+            final details2 =
+                cols[2].getElementsByClassName('compare-stats-block__detail');
+            if (details2.isNotEmpty) {
+              final player2Parts = details2.first.text.trim().split('/');
+              returnStats2[label] = {
+                'Dividend': int.tryParse(player2Parts[0]) ?? 0,
+                'Divisor': int.tryParse(player2Parts[1]) ?? 0
+              };
+            } else {
+              returnStats2[label] = {'Number': int.tryParse(player2Value) ?? 0};
+            }
+          }
+        }
+
+        stats['player1Stats']['ReturnStats'] = returnStats1;
+        stats['player2Stats']['ReturnStats'] = returnStats2;
+      }
+      // 第三个块：得分统计
+      else {
+        Map<String, dynamic> pointStats1 = {};
+        Map<String, dynamic> pointStats2 = {};
+        for (var row in rows) {
+          final label = row
+              .getElementsByClassName('compare-stats-block__label')
+              .first
+              .text
+              .trim()
+              .replaceAll(' ', '');
+          final cols =
+              row.getElementsByClassName('compare-stats-block__content-col');
+
+          if (cols.length >= 3) {
+            final player1Value = cols[0].text.trim();
+            final player2Value = cols[2].text.trim();
+
+            final details1 =
+                cols[0].getElementsByClassName('compare-stats-block__detail');
+            if (details1.isNotEmpty) {
+              final player1Parts = details1.first.text.trim().split('/');
+
+              pointStats1[label] = {
+                'Dividend': int.tryParse(player1Parts[0]) ?? 0,
+                'Divisor': int.tryParse(player1Parts[1]) ?? 0
+              };
+            } else {
+              pointStats1[label] = {'Number': int.tryParse(player1Value) ?? 0};
+            }
+            final details2 =
+                cols[2].getElementsByClassName('compare-stats-block__detail');
+            if (details2.isNotEmpty) {
+              final player2Parts = details2.first.text.trim().split('/');
+              pointStats2[label] = {
+                'Dividend': int.tryParse(player2Parts[0]) ?? 0,
+                'Divisor': int.tryParse(player2Parts[1]) ?? 0
+              };
+            } else {
+              pointStats2[label] = {'Number': int.tryParse(player2Value) ?? 0};
+            }
+          }
+        }
+        stats['player1Stats']['PointStats'] = pointStats1;
+        stats['player2Stats']['PointStats'] = pointStats2;
+      }
+    }
+    i++;
+    return stats;
+  }
+
   static const String _baseUrl = 'https://www.atptour.com';
   static const List<String> _proxyUrls = [
     // 'https://api.allorigins.win/raw?url=',
@@ -41,7 +366,7 @@ class ApiService {
     String fullUrls = _baseUrl + endpoint;
     if (kIsWeb) {
       if (type == 'wta') {
-        if (endpoint.contains("https")) {
+        if (endpoint.contains('https')) {
           fullUrls = endpoint;
         } else {
           fullUrls = 'https://api.wtatennis.com$endpoint';
@@ -798,6 +1123,32 @@ class ApiService {
     }
   }
 
+  static Future<Map<String, dynamic>> getWTAMatcheScore(
+      String tournamentId, String matchId) async {
+    Map<String, dynamic> score = {};
+    final currentYear = DateTime.now().year.toString();
+    try {
+      String endpoint =
+          '/tennis/tournaments/$tournamentId/$currentYear/matches/$matchId/score';
+      debugPrint(
+          'getWTAMatcheScore!!!!!!!!!!!$tournamentId,$matchId,${endpoint}');
+      final Uri uri = _buildUri(endpoint, 'wta');
+      final response = await http.get(uri);
+      debugPrint(
+          'getWTAMatcheScore!!!!!!!!!!!$tournamentId,$matchId,${uri} ${response.statusCode}');
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data != null && data is List && data.isNotEmpty) {
+          score = data[0];
+        }
+      }
+      return score;
+    } catch (e) {
+      print('Error fetching WTA scores: $e');
+      return {};
+    }
+  }
+
   // 获取WTA比赛数据
   static Future<List<Map<String, dynamic>>> getWTAMatches(
       Map<String, dynamic> tournament, DateTime date) async {
@@ -928,11 +1279,11 @@ class ApiService {
           // 确定比赛类型
           String matchType = 'Scheduled';
           if (matchState == 'P') {
-            matchType = 'live';
+            matchType = 'Live';
           } else if (matchState == 'F') {
-            matchType = 'completed';
+            matchType = 'Completed';
           } else if (matchState == 'U') {
-            matchType = 'scheduled';
+            matchType = 'Scheduled';
           }
 
           // 确定获胜者
@@ -950,8 +1301,10 @@ class ApiService {
           Map<String, dynamic> formattedMatch = {
             'player1': player1['Name'],
             'player2': player2['Name'],
-            'player1Rank': player1['Rank'].toString(),
-            'player2Rank': player2['Rank'].toString(),
+            'player1Rank': player1['Rank'].toString().isNotEmpty
+                ? '(${player1['Rank'].toString()})'
+                : '',
+            'player2Rank': '(${player2['Rank'].toString()})',
             'player1Country': player1['Country'],
             'player2Country': player2['Country'],
             'player1FlagUrl':
@@ -966,8 +1319,11 @@ class ApiService {
             'player2TiebreakScores': player2TiebreakScores,
             'roundInfo': "Round ${match['RoundID'] ?? ''}",
             'matchType': matchType,
-            'matchTime':
-                matchState == 'F' ? '${match['MatchTimeTotal']}' : 'UpComing',
+            'serving1': match['Serve'] == 'A' ? true : false,
+            'serving2': match['Serve'] == 'B' ? true : false,
+            'matchTime': matchState == 'F' || matchState == 'P'
+                ? '${match['MatchTimeTotal']}'
+                : 'UpComing',
             'matchDuration': match['MatchTimeTotal'] ?? '',
             'isPlayer1Winner': isPlayer1Winner,
             'isPlayer2Winner': isPlayer2Winner,
@@ -977,8 +1333,13 @@ class ApiService {
                 'https://wtafiles.blob.core.windows.net/images/headshots/${player2['ID'].toString()}.jpg',
             'isCompleted': matchState == 'F',
             'isLive': matchState == 'P',
-            'stadium': '${match['CourtName'] ?? 'Unknow'}',
+            'stadium':
+                '${match['CourtName'] ?? 'Court ${match['CourtID'] ?? ''}'}',
             'typePlayer': 'wta',
+            'tournamentId': tournamentId.toString(),
+            'matchId': match['MatchID'] ?? '',
+            'currentGameScore1': '${match['PointA'] ?? ''}',
+            'currentGameScore2': '${match['PointB'] ?? ''}',
             'tournamentName':
                 '${tournament['tournamentGroup']['name'] ?? ''} ${tournament['tournamentGroup']['level'] ?? ''}',
           };

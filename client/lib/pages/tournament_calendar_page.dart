@@ -632,8 +632,11 @@ class _TournamentCalendarPageState extends State<TournamentCalendarPage>
     }
 
     // Use high-quality tournament images and SVG resources consistently
-    final String tournamentImage = tournament['TournamentImage'] ??
-        'https://images.unsplash.com/photo-1595435934249-5df7ed86e1c0?q=80&w=1920&auto=format&fit=crop';
+    final String tournamentImage = _currentTourType == "ATP"
+        ? tournament['tournamentImage2'] ??
+            'https://images.unsplash.com/photo-1595435934249-5df7ed86e1c0?q=80&w=1920&auto=format&fit=crop'
+        : tournament['TournamentImage'] ??
+            'https://images.unsplash.com/photo-1595435934249-5df7ed86e1c0?q=80&w=1920&auto=format&fit=crop';
     const String atp250Svg = 'assets/images/categorystamps_250.png';
     const String atp500Svg = 'assets/images/categorystamps_500.png';
     const String atpMasterSvg = 'assets/images/categorystamps_1000.png';

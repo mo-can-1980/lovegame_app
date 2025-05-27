@@ -568,7 +568,7 @@ class _PlayerDetailsPageState extends State<PlayerDetailsPage> {
 
                 // 生涯数据内容
                 _buildStatsRow(
-                    'Career High', '$_careerHighRank ($_careerHighRankDate)'),
+                    'Career High', _careerHighRank),
                 _buildStatsRow('Win/Loss', _careerWinLoss),
                 _buildStatsRow('Titles', _careerTitles),
                 _buildStatsRow('Career Prize Money', _CareerPrizeFormatted),

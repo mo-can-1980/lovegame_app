@@ -5,6 +5,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../services/api_service.dart';
 import '../utils/constants.dart';
 import 'player_details_page.dart'; // 添加这一行导入
+import 'package:cached_network_image/cached_network_image.dart';
 
 class PlayerRankingsPage extends StatefulWidget {
   const PlayerRankingsPage({super.key});
@@ -344,7 +345,7 @@ class _PlayerRankingsPageState extends State<PlayerRankingsPage> {
                                         fontSize: 14, color: Color(0xFF6B6B6B)),
                                   ),
                                   leading: CircleAvatar(
-                                    backgroundImage: NetworkImage(
+                                    backgroundImage: CachedNetworkImageProvider(
                                       player['UrlHeadshotImage'] != null &&
                                               player['UrlHeadshotImage']
                                                   .toString()
