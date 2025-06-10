@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'dart:io';
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_svg/flutter_svg.dart';
@@ -61,38 +62,6 @@ class _TournamentCalendarPageState extends State<TournamentCalendarPage>
   }
 
   // Test CORS issues
-  Future<void> _testCORS() async {
-    print('Starting CORS test...');
-    try {
-      // Use ApiService to handle CORS issues
-      final data = await ApiService.getTournamentCalendar();
-
-      print('API request successful - Can access ATP API');
-      // Process returned data
-      // ...
-    } catch (e) {
-      print('CORS test exception: $e');
-      print('Exception type: ${e.runtimeType}');
-
-      // Identify different types of errors
-      if (e.toString().contains('XMLHttpRequest')) {
-        print('Confirmed CORS issue - Browser blocked cross-origin request');
-      } else if (e.toString().contains('Connection refused') ||
-          e.toString().contains('Connection reset')) {
-        print('Network connection issue - Server refused or reset connection');
-      } else if (e.toString().contains('timed out')) {
-        print('Connection timeout - Server did not respond');
-      } else if (e.toString().contains('403')) {
-        print('Access denied - Server rejected the request');
-      } else if (e.toString().contains('404')) {
-        print('Resource not found - Requested resource does not exist');
-      } else if (e.toString().contains('500')) {
-        print('Server error - Internal server error');
-      }
-    }
-  }
-
-  // Attempt to fetch data from backend API
 
   // Keep original method unchanged
   void _updateCalendarData() {
@@ -800,7 +769,7 @@ class _TournamentCalendarPageState extends State<TournamentCalendarPage>
                 children: [
                   // 黑色背景
                   Container(
-                    color: Colors.black,
+                    color: Color(0xFF0C0D0C),
                     height: 240,
                     width: double.infinity,
                   ),
@@ -856,7 +825,7 @@ class _TournamentCalendarPageState extends State<TournamentCalendarPage>
                       },
                       errorBuilder: (context, error, stackTrace) {
                         return Container(
-                          color: Colors.black,
+                          color: const Color(0xFF0C0D0C),
                           child: Center(
                             child: Icon(
                               Icons.sports_tennis,
@@ -1431,7 +1400,9 @@ class _TournamentCalendarPageState extends State<TournamentCalendarPage>
     int firstDayAdjusted =
         _firstDayOfWeek == 7 ? 0 : _firstDayOfWeek; // Adjust Sunday to 0
     for (int i = 0; i < firstDayAdjusted; i++) {
-      cells.add(Container());
+      cells.add(Container(
+        color: _secondaryColor,
+      ));
     }
 
     // 添加当月的所有天
@@ -1442,16 +1413,36 @@ class _TournamentCalendarPageState extends State<TournamentCalendarPage>
     // 添加额外的空白格子填充最后一行
     final remainingCells = totalRows * 7 - cells.length;
     for (int i = 0; i < remainingCells; i++) {
-      cells.add(Container());
+      cells.add(Container(
+        color: _secondaryColor,
+      ));
     }
 
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 8.0),
-      padding: const EdgeInsets.all(8.0),
-      child: GridView.count(
-        crossAxisCount: 7,
-        childAspectRatio: 0.75,
-        children: cells,
+    // 使用Expanded让日历占满屏幕剩余空间
+    return Expanded(
+      child: Container(
+        margin: EdgeInsets.zero,
+        padding: EdgeInsets.zero,
+        child: GridView.builder(
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 7,
+            childAspectRatio: 0.5,
+            mainAxisSpacing: 2.0,
+            crossAxisSpacing: 0.0,
+          ),
+          itemCount: cells.length,
+          itemBuilder: (context, index) {
+            // 在每个单元格下方添加一个带颜色的Container作为分割线
+            return Column(
+              children: [
+                Expanded(child: cells[index]),
+                Container(
+                    height: 1.5,
+                    color: const Color.fromARGB(255, 45, 45, 45)), // 自定义分割线
+              ],
+            );
+          },
+        ),
       ),
     );
   }
@@ -1466,36 +1457,29 @@ class _TournamentCalendarPageState extends State<TournamentCalendarPage>
     final isWeekend = date.weekday == 6 || date.weekday == 7;
 
     return Container(
-      margin: const EdgeInsets.all(2.0),
+      margin: EdgeInsets.zero, // 移除边距
       decoration: BoxDecoration(
         color: isToday ? _primaryColor.withOpacity(0.1) : Colors.transparent,
-        borderRadius: BorderRadius.circular(8.0),
-        border: Border.all(
-          color: isToday ? _primaryColor : Colors.grey.withOpacity(0.3),
-          width: 1.0,
-        ),
+        // 移除边框和圆角
       ),
       child: Column(
         children: [
           // 日期
           Container(
-            padding: const EdgeInsets.all(4.0),
+            padding: const EdgeInsets.all(2.0),
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: isWeekend
                   ? _accentColor.withOpacity(0.1)
                   : Colors.transparent,
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(7),
-                topRight: Radius.circular(7),
-              ),
+              // 移除圆角
             ),
             child: Text(
               day.toString(),
               style: TextStyle(
                 color: isToday ? _primaryColor : Colors.white,
                 fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
-                fontSize: 16,
+                fontSize: 14,
               ),
             ),
           ),
@@ -1503,8 +1487,7 @@ class _TournamentCalendarPageState extends State<TournamentCalendarPage>
           Expanded(
             child: hasTournament
                 ? ListView.builder(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 2.0, vertical: 2.0),
+                    padding: EdgeInsets.zero,
                     itemCount: tournamentsOnDay.length,
                     itemBuilder: (context, index) {
                       final tournament = tournamentsOnDay[index];
@@ -1530,9 +1513,8 @@ class _TournamentCalendarPageState extends State<TournamentCalendarPage>
     final isEndDay = day == endDay;
     final isMiddleDay = day > startDay && day < endDay;
 
-    // 根据赛事类别设置颜色和图标
+    // 根据赛事类别设置颜色
     Color tournamentColor;
-    String? tournamentEmoji;
 
     // 使用正确的字段名称
     final surface = tournament['Surface'] ?? '';
@@ -1542,34 +1524,26 @@ class _TournamentCalendarPageState extends State<TournamentCalendarPage>
     switch (surface.toString().toLowerCase()) {
       case 'clay':
         tournamentColor = Colors.red;
-        tournamentEmoji = '🧱';
         break;
       case 'hard':
         tournamentColor = Colors.blue;
-        tournamentEmoji = '🔷';
         break;
       case 'grass':
         tournamentColor = Colors.green;
-        tournamentEmoji = '🌱';
         break;
       case 'indoor':
         tournamentColor = Colors.purple;
-        tournamentEmoji = '🏠';
         break;
       default:
         // 如果没有表面信息，根据类型设置
         if (type == '1000') {
           tournamentColor = Colors.pink;
-          tournamentEmoji = '💫';
         } else if (type == '500') {
           tournamentColor = _primaryColor;
-          tournamentEmoji = '🎾';
         } else if (type == '250') {
           tournamentColor = Colors.amber;
-          tournamentEmoji = '🎯';
         } else {
           tournamentColor = Colors.blueGrey;
-          tournamentEmoji = '🌍';
         }
     }
 
@@ -1579,77 +1553,94 @@ class _TournamentCalendarPageState extends State<TournamentCalendarPage>
       },
       child: Container(
         margin: const EdgeInsets.only(bottom: 2.0),
-        padding: const EdgeInsets.symmetric(horizontal: 2.0, vertical: 1.0),
+        height: 22, // 保持高度为30
+        // 添加这个属性，使容器能够超出父容器边界
+        clipBehavior: Clip.none,
         decoration: BoxDecoration(
-          color: _secondaryColor,
-          borderRadius: BorderRadius.circular(4.0),
-          border: Border.all(
-            color: tournamentColor,
-            width: 1.0,
-          ),
+          color: tournamentColor.withOpacity(0.2), // 使用纯色背景，半透明
+          // 移除边框和圆角
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.max,
+        child: Stack(
+          clipBehavior: Clip.none, // 确保Stack也不裁剪溢出内容
           children: [
-            if (isStartDay) ...[
-              Text(
-                tournamentEmoji,
-                style: const TextStyle(fontSize: 10),
-              ),
-              const SizedBox(width: 2),
-            ],
-            if (isMiddleDay) ...[
-              Container(
-                width: 3,
-                height: 12,
-                decoration: BoxDecoration(
-                  color: tournamentColor,
-                  borderRadius: BorderRadius.circular(1.5),
-                ),
-              ),
-              const SizedBox(width: 2),
-            ],
-            Expanded(
-              child: Text(
-                isStartDay
-                    ? (tournament['Name'] ?? '')
-                    : isMiddleDay
-                        ? (_getShortTournamentName(tournament['Name'] ?? ''))
-                        : (isEndDay ? 'Finals' : ''),
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: tournamentColor,
-                  fontSize: 8.0,
-                  fontWeight: isStartDay || isEndDay
-                      ? FontWeight.bold
-                      : FontWeight.normal,
+            // 赛事文本内容
+            Positioned.fill(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                child: Row(
+                  mainAxisSize: MainAxisSize.max,
+                  children: [
+                    // 左侧指示器（开始日/中间日/结束日）- 实现贯穿式设计
+                    if (isStartDay) ...[
+                      // 第一天加粗左边框
+                      Container(
+                        width: 4, // 加粗边框宽度
+                        height: double.infinity,
+                        color: tournamentColor, // 使用赛事颜色
+                      ),
+                      const SizedBox(width: 4),
+                    ] else if (isMiddleDay || isEndDay) ...[
+                      // 中间日和结束日使用白色透明效果
+                      // Container(
+                      //   width: 2, // 减小宽度
+                      //   height: double.infinity,
+                      //   color: tournamentColor, // 白色半透明
+                      // ),
+                      // const SizedBox(width: 4),
+                    ],
+
+                    // 替换原有的Expanded+Text组合
+                    if (!isStartDay)
+                      Expanded(
+                        child: Text(
+                          isMiddleDay ? '' : (isEndDay ? 'Finals' : ''),
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 10.0,
+                            fontWeight:
+                                isEndDay ? FontWeight.bold : FontWeight.normal,
+                          ),
+                        ),
+                      ),
+
+                    if (isEndDay) ...[
+                      const Icon(
+                        Icons.emoji_events_outlined,
+                        color: Colors.white,
+                        size: 12, // 增加图标大小
+                      ),
+                    ],
+                  ],
                 ),
               ),
             ),
-            if (isEndDay) ...[
-              Icon(
-                Icons.emoji_events_outlined,
-                color: tournamentColor,
-                size: 8,
-              ),
-            ],
+
+            // 添加绝对定位的赛事名称（仅在开始日显示）
+            if (isStartDay)
+              Positioned(
+                  left: 12, // 左侧留出空间给边框和间距
+                  top: 0,
+                  height: 22, // 与容器同高
+                  // 不设置宽度，允许文本自然延伸
+                  child: Row(children: [
+                    _buildSurfaceIcon(surface),
+                    const SizedBox(width: 4),
+                    Container(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        tournament['Name'] ?? '',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10.0,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ])),
           ],
         ),
       ),
     );
-  }
-
-  String _getShortTournamentName(String name) {
-    // 缩短比赛名称
-    if (name.length <= 8) return name;
-
-    final nameParts = name.split(' ');
-    if (nameParts.length > 1) {
-      // 取第一个单词的首字母
-      return nameParts.map((word) => word[0]).join('').toUpperCase();
-    }
-
-    return '${name.substring(0, 6)}...';
   }
 
   void _showTournamentDetails(dynamic tournament) {
@@ -1783,14 +1774,77 @@ class _TournamentCalendarPageState extends State<TournamentCalendarPage>
   }
 
   Widget _buildLegendItem(String label, Color color) {
+    // 根据标签选择对应的图片URL
+    String imageUrl;
+    switch (label.toLowerCase()) {
+      case 'hard':
+        imageUrl =
+            'https://www.tennistv.com/resources/v2.9.3/i/elements/filters/hard.png';
+        break;
+      case 'grass':
+        imageUrl =
+            'https://www.tennistv.com/resources/v2.9.3/i/elements/filters/grass.png';
+        break;
+      case 'clay':
+        imageUrl =
+            'https://www.tennistv.com/resources/v2.9.3/i/elements/filters/clay.png';
+        break;
+      case 'indoor':
+        imageUrl =
+            'https://images.unsplash.com/photo-1508811891619-ae014bf20ef9?q=80&w=1629&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D';
+        break;
+      default:
+        // 如果没有匹配的标签，使用原来的颜色方块
+        return Row(
+          children: [
+            Container(
+              width: 12,
+              height: 12,
+              decoration: BoxDecoration(
+                color: color,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        );
+    }
+
     return Row(
       children: [
-        Container(
-          width: 12,
-          height: 12,
-          decoration: BoxDecoration(
-            color: color,
-            borderRadius: BorderRadius.circular(2),
+        // 使用网络图片替换颜色方块
+        ClipRRect(
+          borderRadius: BorderRadius.circular(2),
+          child: Image.network(
+            imageUrl,
+            width: 12,
+            height: 12,
+            fit: BoxFit.cover,
+            // 添加加载占位符
+            loadingBuilder: (context, child, loadingProgress) {
+              if (loadingProgress == null) return child;
+              return Container(
+                width: 12,
+                height: 12,
+                color: color, // 加载时显示原来的颜色
+              );
+            },
+            // 添加错误处理
+            errorBuilder: (context, error, stackTrace) {
+              return Container(
+                width: 12,
+                height: 12,
+                color: color, // 加载失败时显示原来的颜色
+              );
+            },
           ),
         ),
         const SizedBox(width: 4),
@@ -1806,9 +1860,67 @@ class _TournamentCalendarPageState extends State<TournamentCalendarPage>
     );
   }
 
+  Widget _buildSurfaceIcon(String surface) {
+    String imageUrl;
+    Color fallbackColor;
+
+    switch (surface.toString().toLowerCase()) {
+      case 'clay':
+        imageUrl =
+            'https://www.tennistv.com/resources/v2.9.3/i/elements/filters/clay.png';
+        fallbackColor = Colors.red;
+        break;
+      case 'hard':
+        imageUrl =
+            'https://www.tennistv.com/resources/v2.9.3/i/elements/filters/hard.png';
+        fallbackColor = Colors.blue;
+        break;
+      case 'grass':
+        imageUrl =
+            'https://www.tennistv.com/resources/v2.9.3/i/elements/filters/grass.png';
+        fallbackColor = Colors.green;
+        break;
+      case 'indoor':
+        imageUrl =
+            'https://images.unsplash.com/photo-1508811891619-ae014bf20ef9?q=80&w=1629&auto=format&fit=crop&ixlib=rb-4.1.0';
+        fallbackColor = Colors.purple;
+        break;
+      default:
+        // 如果没有匹配的表面类型，返回一个透明的容器
+        return const SizedBox.shrink();
+    }
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(2),
+      child: Image.network(
+        imageUrl,
+        width: 12,
+        height: 12,
+        fit: BoxFit.cover,
+        // 添加加载占位符
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          return Container(
+            width: 12,
+            height: 12,
+            color: fallbackColor, // 加载时显示对应颜色
+          );
+        },
+        // 添加错误处理
+        errorBuilder: (context, error, stackTrace) {
+          return Container(
+            width: 12,
+            height: 12,
+            color: fallbackColor, // 加载失败时显示对应颜色
+          );
+        },
+      ),
+    );
+  }
+
   // 获取特定日期上的赛事
   List<dynamic> _getTournamentsOnDay(int day) {
-    return _tournaments.where((tournament) {
+    final tournaments = _tournaments.where((tournament) {
       int? startDay = tournament['startDay'];
       int? endDay = tournament['endDay'];
 
@@ -1818,6 +1930,33 @@ class _TournamentCalendarPageState extends State<TournamentCalendarPage>
       // 检查当天是否在赛事日期范围内
       return day >= startDay && day <= endDay;
     }).toList();
+    tournaments.sort((a, b) {
+      final aEndDay = a['endDay'] ?? 0;
+      final bEndDay = b['endDay'] ?? 0;
+
+      // 如果当天是a的最后一天，但不是b的最后一天，a应该排在后面
+      final aIsFinalDay = day == aEndDay;
+      final bIsFinalDay = day == bEndDay;
+
+      if (aIsFinalDay && !bIsFinalDay) {
+        return 1; // a排在后面
+      } else if (!aIsFinalDay && bIsFinalDay) {
+        return -1; // b排在后面
+      }
+
+      // 如果两者都是或都不是最后一天，按照Surface和Type排序保持稳定顺序
+      final aSurface = a['Surface'] ?? '';
+      final bSurface = b['Surface'] ?? '';
+      final surfaceComp = aSurface.compareTo(bSurface);
+
+      if (surfaceComp != 0) return surfaceComp;
+
+      final aType = a['Type'] ?? '';
+      final bType = b['Type'] ?? '';
+      return aType.compareTo(bType);
+    });
+
+    return tournaments;
   }
 
   bool _isToday(DateTime date) {

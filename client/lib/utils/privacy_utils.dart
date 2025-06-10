@@ -19,12 +19,12 @@ class PrivacyUtils {
   // 显示隐私政策对话框
   static Future<bool> showPrivacyDialog(BuildContext context) async {
     final bool hasAccepted = await hasAcceptedPrivacy();
-    
+
     // 如果用户已经接受，直接返回true
     if (hasAccepted) {
       return true;
     }
-    
+
     // 显示隐私政策对话框
     final result = await showDialog<bool>(
       context: context,
@@ -72,16 +72,18 @@ class PrivacyUtils {
           ),
           actions: <Widget>[
             TextButton(
-              child: const Text('Decline', style: TextStyle(color: Colors.grey)),
+              child:
+                  const Text('Decline', style: TextStyle(color: Colors.grey)),
               onPressed: () {
                 Navigator.of(context).pop(false);
               },
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green,
+                backgroundColor: const Color(0xFF94E831),
               ),
-              child: const Text('Accept'),
+              child:
+                  const Text('Accept', style: TextStyle(color: Colors.black)),
               onPressed: () async {
                 await markPrivacyAccepted();
                 Navigator.of(context).pop(true);
@@ -91,10 +93,10 @@ class PrivacyUtils {
         );
       },
     );
-    
+
     return result ?? false;
   }
-  
+
   static Widget _buildBulletPoint(String text) {
     return Padding(
       padding: const EdgeInsets.only(left: 8.0, bottom: 4.0),

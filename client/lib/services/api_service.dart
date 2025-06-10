@@ -5,7 +5,7 @@
  * @version: 1.0
  * @Date: 2025-04-21 17:22:17
  * @LastEditors: ouchao
- * @LastEditTime: 2025-05-24 20:19:49
+ * @LastEditTime: 2025-05-27 17:29:42
  */
 import 'package:LoveGame/utils/timezone_mapping.dart';
 import 'package:html/parser.dart';
@@ -944,12 +944,17 @@ class ApiService {
               'player2':
                   '${player2['PlayerFirstName'] ?? ''} ${player2['PlayerLastName'] ?? ''}',
               'player1Rank':
-                  playerTeam['Seed'] != null ? '(${playerTeam['Seed']})' : '',
-              'player2Rank': opponentTeam['Seed'] != null
-                  ? '(${opponentTeam['Seed']})'
-                  : '',
+                  playerTeam['Seed'] != null && playerTeam['Seed'] != 0
+                      ? '(${playerTeam['Seed']})'
+                      : '',
+              'player2Rank':
+                  opponentTeam['Seed'] != null && opponentTeam['Seed'] != 0
+                      ? '(${opponentTeam['Seed']})'
+                      : '',
               'player1Country': player1['PlayerCountry'] ?? '',
               'player2Country': player2['PlayerCountry'] ?? '',
+              'player1Id': player1['PlayerId'] ?? '',
+              'player2Id': player2['PlayerId'] ?? '',
               'player1FlagUrl': player1FlagUrl,
               'player2FlagUrl': player2FlagUrl,
               'player1ImageUrl': player1ImageUrl,
@@ -1304,7 +1309,9 @@ class ApiService {
             'player1Rank': player1['Rank'].toString().isNotEmpty
                 ? '(${player1['Rank'].toString()})'
                 : '',
-            'player2Rank': '(${player2['Rank'].toString()})',
+            'player2Rank': player2['Rank'].toString().isNotEmpty
+                ? '(${player2['Rank'].toString()})'
+                : '',
             'player1Country': player1['Country'],
             'player2Country': player2['Country'],
             'player1FlagUrl':
@@ -1334,7 +1341,7 @@ class ApiService {
             'isCompleted': matchState == 'F',
             'isLive': matchState == 'P',
             'stadium':
-                '${match['CourtName'] ?? 'Court ${match['CourtID'] ?? ''}'}',
+                '${match['CourtName'] ?? '${match['Venue']['name'] ?? 'Court ${match['CourtID']}'}'}',
             'typePlayer': 'wta',
             'tournamentId': tournamentId.toString(),
             'matchId': match['MatchID'] ?? '',

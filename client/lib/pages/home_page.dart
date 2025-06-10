@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:LoveGame/pages/settings_page.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
@@ -51,11 +52,9 @@ class _HomePageState extends State<HomePage> {
   List<Map<String, dynamic>> _currentTournaments = [];
   List<String> imageBanners = [
     'https://images.unsplash.com/photo-1465125672495-63cdc2fa22ed?q=80&w=2940&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D',
-    'https://images.unsplash.com/photo-1545151414-8a948e1ea54f?q=80&w=3087&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D'
-     'https://images.unsplash.com/photo-1595435934249-5df7ed86e1c0?q=80&w=1920&auto=format&fit=crop',
-
+    'https://images.unsplash.com/photo-1545151414-8a948e1ea54f?q=80&w=3087&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D',
+    'https://images.unsplash.com/photo-1595435934249-5df7ed86e1c0?q=80&w=1920&auto=format&fit=crop',
   ];
-  final PageController _pageController = PageController();
   int _currentImageIndex = 0;
   Timer? _autoSlideTimer;
   @override
@@ -205,12 +204,12 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _onScroll() {
-    if (_scrollController.position.pixels >=
-            _scrollController.position.maxScrollExtent - 200 &&
-        !_isLoading &&
-        !_noMoreData) {
-      _loadMoreMatches();
-    }
+    // if (_scrollController.position.pixels >=
+    //         _scrollController.position.maxScrollExtent - 200 &&
+    //     !_isLoading &&
+    //     !_noMoreData) {
+    //   _loadMoreMatches();
+    // }
   }
 
   // 加载所有数据
@@ -592,55 +591,78 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
+  bool _showRefreshComplete = false;
+
   // 模拟刷新
   Future<void> _onRefresh() async {
+    debugPrint('>>>>>_onRefresh');
     setState(() {
       _isRefreshing = true;
     });
-    _loadData();
+    await _loadData();
     setState(() {
       _isRefreshing = false;
+      _showRefreshComplete = true;
+    });
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted) {
+        setState(() {
+          _showRefreshComplete = false;
+        });
+      }
     });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black, // 设置背景色为黑色，确保底部过渡平滑
+        backgroundColor: Colors.black, // 设置背景色为黑色，确保底部过渡平滑
 
-      body: Stack(
-        children: [
-          // 背景图片容器
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            height: MediaQuery.of(context).size.height / 3.5 +
-                120, // 高度增加到300，底部部分会被圆角裁剪
-            child: ClipRRect(
-              borderRadius: const BorderRadius.vertical(
-                bottom: Radius.circular(20),
-              ),
-              child: Stack(
-                children: [
-                  // 背景图片
-                  Container(
-                    width: double.infinity,
-                    height: double.infinity,
-                    child: imageBanners.isNotEmpty
-                        ? AnimatedSwitcher(
-                            duration: const Duration(milliseconds: 800),
-                            transitionBuilder:
-                                (Widget child, Animation<double> animation) {
-                              return FadeTransition(
-                                opacity: animation,
-                                child: child,
-                              );
-                            },
-                            child: Image.network(
-                              key: ValueKey<String>(
-                                  imageBanners[_currentImageIndex]),
-                              imageBanners[_currentImageIndex],
+        body: Stack(
+          children: [
+            // 背景图片容器
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              height: MediaQuery.of(context).size.height / 3.5 +
+                  120, // 高度增加到300，底部部分会被圆角裁剪
+              child: ClipRRect(
+                borderRadius: const BorderRadius.vertical(
+                  bottom: Radius.circular(20),
+                ),
+                child: Stack(
+                  children: [
+                    // 背景图片
+                    Container(
+                      width: double.infinity,
+                      height: double.infinity,
+                      child: imageBanners.isNotEmpty
+                          ? AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 800),
+                              transitionBuilder:
+                                  (Widget child, Animation<double> animation) {
+                                return FadeTransition(
+                                  opacity: animation,
+                                  child: child,
+                                );
+                              },
+                              child: CachedNetworkImage(
+                                key: ValueKey<String>(
+                                    imageBanners[_currentImageIndex]),
+                                imageUrl: imageBanners[_currentImageIndex],
+                                fit: BoxFit.cover,
+                                width: double.infinity,
+                                height: double.infinity,
+                                placeholder: (context, url) => const Center(
+                                  child: CircularProgressIndicator(),
+                                ),
+                                errorWidget: (context, url, error) =>
+                                    const Icon(Icons.error),
+                              ),
+                            )
+                          : Image.network(
+                              'https://images.unsplash.com/photo-1595435934249-5df7ed86e1c0?q=80&w=1920&auto=format&fit=crop',
                               fit: BoxFit.cover,
                               width: double.infinity,
                               height: double.infinity,
@@ -680,89 +702,51 @@ class _HomePageState extends State<HomePage> {
                                 );
                               },
                             ),
-                          )
-                        : Image.network(
-                            'https://images.unsplash.com/photo-1595435934249-5df7ed86e1c0?q=80&w=1920&auto=format&fit=crop',
-                            fit: BoxFit.cover,
-                            width: double.infinity,
-                            height: double.infinity,
-                            loadingBuilder: (context, child, loadingProgress) {
-                              if (loadingProgress == null) return child;
-                              return Container(
-                                color: Colors.black,
-                                child: Center(
-                                  child: CircularProgressIndicator(
-                                    value: loadingProgress.expectedTotalBytes !=
-                                            null
-                                        ? loadingProgress
-                                                .cumulativeBytesLoaded /
-                                            loadingProgress.expectedTotalBytes!
-                                        : null,
-                                    valueColor:
-                                        const AlwaysStoppedAnimation<Color>(
-                                            Colors.white),
-                                  ),
-                                ),
-                              );
-                            },
-                            errorBuilder: (context, error, stackTrace) {
-                              return Container(
-                                color: Colors.black,
-                                child: Center(
-                                  child: Icon(
-                                    Icons.error_outline,
-                                    color: Theme.of(context).colorScheme.error,
-                                    size: 48,
-                                  ),
-                                ),
-                              );
-                            },
+                    ),
+                    // 渐变遮罩
+                    Positioned.fill(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.black.withOpacity(0.1),
+                              Colors.black.withOpacity(0.4),
+                              Colors.black.withOpacity(0.5),
+                            ],
+                            stops: const [0.0, 0.7, 1.0],
                           ),
-                  ),
-                  // 渐变遮罩
-                  Positioned.fill(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Colors.black.withOpacity(0.1),
-                            Colors.black.withOpacity(0.4),
-                            Colors.black.withOpacity(0.5),
-                          ],
-                          stops: const [0.0, 0.7, 1.0],
                         ),
                       ),
                     ),
-                  ),
-                  // 在背景图片底部添加日历组件
-                  Positioned(
-                    bottom: 10, //
-                    left: 0,
-                    right: 0,
-                    child: TennisCalendar(
-                      selectedDate: selectedDate,
-                      onDateSelected: (date) {
-                        _onDateSelected(date);
-                        // final formatter = DateFormat('E, d MMMM, yyyy');
-                        // setState(() {
-                        //   selectedDate = date;
-                        //   _selectedDateStr = formatter.format(date);
-                        // });
-                        // 重新加载该日期的比赛
-                        // _onRefresh();
-                      },
+                    // 在背景图片底部添加日历组件
+                    Positioned(
+                      bottom: 10, //
+                      left: 0,
+                      right: 0,
+                      child: TennisCalendar(
+                        selectedDate: selectedDate,
+                        onDateSelected: (date) {
+                          _onDateSelected(date);
+                          // final formatter = DateFormat('E, d MMMM, yyyy');
+                          // setState(() {
+                          //   selectedDate = date;
+                          //   _selectedDateStr = formatter.format(date);
+                          // });
+                          // 重新加载该日期的比赛
+                          // _onRefresh();
+                        },
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
-          ),
 
-          // 主要内容
-          SafeArea(
-            child: Column(
+            // 主要内容
+            SafeArea(
+                child: Column(
               children: [
                 // 顶部栏
                 Padding(
@@ -801,214 +785,276 @@ class _HomePageState extends State<HomePage> {
                 // 比赛列表
                 Expanded(
                   child: Container(
-                    decoration: const BoxDecoration(
-                      color: Colors.black,
-                    ),
-                    margin: const EdgeInsets.only(top: 0),
-                    child: RefreshIndicator(
-                      onRefresh: _onRefresh,
-                      color: Colors.white,
-                      backgroundColor: Colors.black,
-                      child: _matches.isEmpty && !_isLoading
-                          ? Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  SvgPicture.asset(
-                                    'assets/svg/icon_no_match.svg',
-                                    width: 56,
-                                    height: 56,
-                                    colorFilter: const ColorFilter.mode(
-                                        Color.fromARGB(64, 255, 255, 255),
-                                        BlendMode.srcIn),
-                                  ),
-                                  const SizedBox(height: 16),
-                                  Text(
-                                    _errorMessage.isNotEmpty
-                                        ? _errorMessage
-                                        : 'No matches ',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 16,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 24),
-                                  Container(
-                                    decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(8),
-                                      border: Border.all(
-                                        color: Colors.white,
-                                        width: 0.5,
-                                      ),
-                                    ),
-                                    child: ElevatedButton(
-                                      onPressed: _onRefresh,
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.black,
-                                        foregroundColor: Colors.white,
-                                        elevation: 0,
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 30, vertical: 0),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(8),
-                                        ),
-                                      ),
-                                      child: const Text(
-                                        'Refresh',
-                                        style: TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w400,
-                                          letterSpacing: 0.5,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            )
-                          : ListView.builder(
-                              controller: _scrollController,
-                              physics: const AlwaysScrollableScrollPhysics(
-                                parent: BouncingScrollPhysics(),
-                              ),
-                              itemCount: _matches.length + 1,
-                              itemBuilder: (context, index) {
-                                if (index == _matches.length) {
-                                  return Container(
-                                    padding: const EdgeInsets.all(16.0),
-                                    alignment: Alignment.center,
-                                    child: _isLoading
-                                        ? const CircularProgressIndicator(
-                                            valueColor:
-                                                AlwaysStoppedAnimation<Color>(
-                                                    Colors.white),
-                                          )
-                                        : _noMoreData
-                                            ? const Text(
-                                                'No more match',
-                                                style: TextStyle(
-                                                  color: Colors.grey,
-                                                  fontSize: 14.0,
-                                                ),
-                                              )
-                                            : const SizedBox.shrink(),
-                                  );
-                                }
-                                final match = _matches[index];
-                                // 安全检查：确保访问数组元素前先检查数组是否为空
-
-                                debugPrint('item ===== :${match}');
-                                return TennisScoreCard(
-                                  player1: match['player1'] ?? '',
-                                  player2: match['player2'] ?? '',
-                                  player1Rank: match['player1Rank'] ?? '',
-                                  player2Rank: match['player2Rank'] ?? '',
-                                  player1Country: match['player1Country'] ?? '',
-                                  player2Country: match['player2Country'] ?? '',
-                                  player2FlagUrl: match['player2FlagUrl'] ?? '',
-                                  player1FlagUrl: match['player1FlagUrl'] ?? '',
-                                  player1ImageUrl:
-                                      match['player1ImageUrl'] ?? '',
-                                  player2ImageUrl:
-                                      match['player2ImageUrl'] ?? '',
-                                  serving1: match['serving1'] ?? false,
-                                  serving2: match['serving2'] ?? false,
-                                  roundInfo: match['roundInfo'] ?? '',
-                                  set1Scores: List<int>.from(
-                                      match['player1SetScores'] ?? []),
-                                  set2Scores: List<int>.from(
-                                      match['player2SetScores'] ?? []),
-                                  tiebreak1: List<int>.from(
-                                      match['player1TiebreakScores'] ?? []),
-                                  tiebreak2: List<int>.from(
-                                      match['player2TiebreakScores'] ?? []),
-                                  currentGameScore1:
-                                      match['currentGameScore1'] ?? '',
-                                  currentGameScore2:
-                                      match['currentGameScore2'] ?? '',
-                                  isLive: match['isLive'] ?? false,
-                                  matchDuration: match['matchDuration'] ?? '',
-                                  isPlayer1Winner:
-                                      match['isPlayer1Winner'] ?? false,
-                                  isPlayer2Winner:
-                                      match['isPlayer2Winner'] ?? false,
-                                  matchType: match['matchType'] ?? false,
-                                  stadium: match['stadium'] ?? '',
-                                  matchTime: match['matchTime'] ?? '',
-                                  tournamentName: match['tournamentName'] ?? '',
-                                  player1Id: match['player1Id'] ?? '',
-                                  player2Id: match['player2Id'] ?? '',
-                                  typePlayer: match['typePlayer'] ?? 'atp',
-                                  onWatchPressed: () async {
-                                    final Uri url = Uri.parse(
-                                        'https://www.haixing.cc/live?type=5');
-                                    if (!await launchUrl(url)) {
-                                      throw Exception('无法打开 $url');
-                                    }
-                                  },
-                                  onDetailPressed: () {
-                                    if (match['matchType'] == 'Scheduled') {
-                                      // 使用SnackBar提示比赛未开始
-                                      ScaffoldMessenger.of(context)
-                                          .showSnackBar(
-                                        SnackBar(
-                                          content: Text(
-                                            '${match['player1']} vs ${match['player2']} match has not started yet',
+                      decoration: const BoxDecoration(
+                        color: Colors.black,
+                      ),
+                      margin: const EdgeInsets.only(top: 0),
+                      child: RefreshIndicator(
+                        onRefresh: _onRefresh,
+                        color: Colors.white,
+                        backgroundColor: Colors.black,
+                        child: Column(
+                          children: [
+                            // 刷新完成提示
+                            AnimatedContainer(
+                                duration: const Duration(milliseconds: 300),
+                                height: _showRefreshComplete ? 30 : 0,
+                                color: Colors.transparent,
+                                child: Center(
+                                  child: _showRefreshComplete
+                                      ? const Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
+                                          children: [
+                                            Icon(
+                                              Icons.check_circle,
+                                              color: Color(0xFF94E831),
+                                              size: 16,
+                                            ),
+                                            SizedBox(width: 8),
+                                            Text(
+                                              'Completed Refeshed',
+                                              style: TextStyle(
+                                                color: Color(0xFF94E831),
+                                                fontSize: 14,
+                                              ),
+                                            ),
+                                          ],
+                                        )
+                                      : null,
+                                )),
+                            // 原有的列表内容
+                            Expanded(
+                              child: _matches.isEmpty && !_isLoading
+                                  ? Center(
+                                      child: Column(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          SvgPicture.asset(
+                                            'assets/svg/icon_no_match.svg',
+                                            width: 56,
+                                            height: 56,
+                                            colorFilter: const ColorFilter.mode(
+                                                Color.fromARGB(
+                                                    64, 255, 255, 255),
+                                                BlendMode.srcIn),
+                                          ),
+                                          const SizedBox(height: 16),
+                                          Text(
+                                            _errorMessage.isNotEmpty
+                                                ? _errorMessage
+                                                : 'No matches ',
                                             style: const TextStyle(
-                                                color: Colors.white),
+                                              color: Colors.white,
+                                              fontSize: 16,
+                                            ),
                                           ),
-                                          backgroundColor:
-                                              const Color(0xFF333333),
-                                          duration: const Duration(seconds: 2),
-                                        ),
-                                      );
-                                    } else {
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (context) =>
-                                              MatchDetailsPage(
-                                            matchId: match['matchId'] ?? '',
-                                            tournamentId:
-                                                match['tournamentId'] ?? '',
-                                            year: match['year'] ?? '',
-                                            player1ImageUrl:
-                                                match['player1ImageUrl'] ?? '',
-                                            player2ImageUrl:
-                                                match['player2ImageUrl'] ?? '',
-                                            player1FlagUrl:
-                                                match['player1FlagUrl'] ?? '',
-                                            player2FlagUrl:
-                                                match['player2FlagUrl'] ?? '',
-                                            typeMatch:
-                                                match['typePlayer'] ?? 'atp',
-                                            // 添加传入的比分数据，支持5盘
-                                            inputSetScores: {
-                                              'player1':
-                                                  match['player1SetScores'] ??
-                                                      [],
-                                              'player2':
-                                                  match['player2SetScores'] ??
-                                                      []
-                                            },
-                                            player1Id: match['player1Id'] ?? '',
-                                            player2Id: match['player2Id'] ?? '',
+                                          const SizedBox(height: 24),
+                                          Container(
+                                            decoration: BoxDecoration(
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                              border: Border.all(
+                                                color: Colors.white,
+                                                width: 0.5,
+                                              ),
+                                            ),
+                                            child: ElevatedButton(
+                                              onPressed: _onRefresh,
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor: Colors.black,
+                                                foregroundColor: Colors.white,
+                                                elevation: 0,
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                        horizontal: 30,
+                                                        vertical: 0),
+                                                shape: RoundedRectangleBorder(
+                                                  borderRadius:
+                                                      BorderRadius.circular(8),
+                                                ),
+                                              ),
+                                              child: const Text(
+                                                'Refresh',
+                                                style: TextStyle(
+                                                  fontSize: 16,
+                                                  fontWeight: FontWeight.w400,
+                                                  letterSpacing: 0.5,
+                                                ),
+                                              ),
+                                            ),
                                           ),
-                                        ),
-                                      );
-                                    }
-                                  },
-                                );
-                              }),
-                    ),
-                  ),
+                                        ],
+                                      ),
+                                    )
+                                  : ListView.builder(
+                                      controller: _scrollController,
+                                      physics:
+                                          const AlwaysScrollableScrollPhysics(
+                                        parent: BouncingScrollPhysics(),
+                                      ),
+                                      itemCount: _matches.length + 1,
+                                      itemBuilder: (context, index) {
+                                        if (index == _matches.length) {
+                                          return Container(
+                                            padding: const EdgeInsets.all(16.0),
+                                            alignment: Alignment.center,
+                                            child: _isLoading
+                                                ? const CupertinoActivityIndicator(
+                                                    radius: 16.0,
+                                                    color: Color(0xFF94E831),
+                                                  )
+                                                : _noMoreData
+                                                    ? const Text(
+                                                        'No more match',
+                                                        style: TextStyle(
+                                                          color: Colors.grey,
+                                                          fontSize: 14.0,
+                                                        ),
+                                                      )
+                                                    : const SizedBox.shrink(),
+                                          );
+                                        }
+                                        final match = _matches[index];
+                                        // 安全检查：确保访问数组元素前先检查数组是否为空
+
+                                        debugPrint('item ===== :${match}');
+                                        return TennisScoreCard(
+                                          player1: match['player1'] ?? '',
+                                          player2: match['player2'] ?? '',
+                                          player1Rank:
+                                              match['player1Rank'] ?? '',
+                                          player2Rank:
+                                              match['player2Rank'] ?? '',
+                                          player1Country:
+                                              match['player1Country'] ?? '',
+                                          player2Country:
+                                              match['player2Country'] ?? '',
+                                          player2FlagUrl:
+                                              match['player2FlagUrl'] ?? '',
+                                          player1FlagUrl:
+                                              match['player1FlagUrl'] ?? '',
+                                          player1ImageUrl:
+                                              match['player1ImageUrl'] ?? '',
+                                          player2ImageUrl:
+                                              match['player2ImageUrl'] ?? '',
+                                          serving1: match['serving1'] ?? false,
+                                          serving2: match['serving2'] ?? false,
+                                          roundInfo: match['roundInfo'] ?? '',
+                                          set1Scores: List<int>.from(
+                                              match['player1SetScores'] ?? []),
+                                          set2Scores: List<int>.from(
+                                              match['player2SetScores'] ?? []),
+                                          tiebreak1: List<int>.from(
+                                              match['player1TiebreakScores'] ??
+                                                  []),
+                                          tiebreak2: List<int>.from(
+                                              match['player2TiebreakScores'] ??
+                                                  []),
+                                          currentGameScore1:
+                                              match['currentGameScore1'] ?? '',
+                                          currentGameScore2:
+                                              match['currentGameScore2'] ?? '',
+                                          isLive: match['isLive'] ?? false,
+                                          matchDuration:
+                                              match['matchDuration'] ?? '',
+                                          isPlayer1Winner:
+                                              match['isPlayer1Winner'] ?? false,
+                                          isPlayer2Winner:
+                                              match['isPlayer2Winner'] ?? false,
+                                          matchType:
+                                              match['matchType'] ?? false,
+                                          stadium: match['stadium'] ?? '',
+                                          matchTime: match['matchTime'] ?? '',
+                                          tournamentName:
+                                              match['tournamentName'] ?? '',
+                                          player1Id: match['player1Id'] ?? '',
+                                          player2Id: match['player2Id'] ?? '',
+                                          typePlayer:
+                                              match['typePlayer'] ?? 'atp',
+                                          onWatchPressed: () async {
+                                            final Uri url = Uri.parse(
+                                                'https://www.haixing.cc/live?type=5');
+                                            if (!await launchUrl(url)) {
+                                              throw Exception('无法打开 $url');
+                                            }
+                                          },
+                                          onDetailPressed: () {
+                                            if (match['matchType'] ==
+                                                'Scheduled') {
+                                              // 使用SnackBar提示比赛未开始
+                                              ScaffoldMessenger.of(context)
+                                                  .showSnackBar(
+                                                SnackBar(
+                                                  content: Text(
+                                                    '${match['player1']} vs ${match['player2']} match has not started yet',
+                                                    style: const TextStyle(
+                                                        color: Colors.white),
+                                                  ),
+                                                  backgroundColor:
+                                                      const Color(0xFF333333),
+                                                  duration: const Duration(
+                                                      seconds: 2),
+                                                ),
+                                              );
+                                            } else {
+                                              Navigator.push(
+                                                context,
+                                                MaterialPageRoute(
+                                                  builder: (context) =>
+                                                      MatchDetailsPage(
+                                                    matchId:
+                                                        match['matchId'] ?? '',
+                                                    tournamentId:
+                                                        match['tournamentId'] ??
+                                                            '',
+                                                    year: match['year'] ?? '',
+                                                    player1ImageUrl: match[
+                                                            'player1ImageUrl'] ??
+                                                        '',
+                                                    player2ImageUrl: match[
+                                                            'player2ImageUrl'] ??
+                                                        '',
+                                                    player1FlagUrl: match[
+                                                            'player1FlagUrl'] ??
+                                                        '',
+                                                    player2FlagUrl: match[
+                                                            'player2FlagUrl'] ??
+                                                        '',
+                                                    typeMatch:
+                                                        match['typePlayer'] ??
+                                                            'atp',
+                                                    // 添加传入的比分数据，支持5盘
+                                                    inputSetScores: {
+                                                      'player1': match[
+                                                              'player1SetScores'] ??
+                                                          [],
+                                                      'player2': match[
+                                                              'player2SetScores'] ??
+                                                          []
+                                                    },
+                                                    player1Id:
+                                                        match['player1Id'] ??
+                                                            '',
+                                                    player2Id:
+                                                        match['player2Id'] ??
+                                                            '',
+                                                  ),
+                                                ),
+                                              );
+                                            }
+                                          },
+                                        );
+                                      }),
+                            ),
+                          ],
+                        ),
+                      )),
                 ),
               ],
-            ),
-          )
-        ],
-      ),
-    );
+            )),
+          ],
+        ));
   }
 }

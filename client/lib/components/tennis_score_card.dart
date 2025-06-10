@@ -206,7 +206,7 @@ class TennisScoreCard extends StatelessWidget {
                 LayoutBuilder(builder: (context, constraints) {
                   // 计算每列的宽度
                   final availableWidth = constraints.maxWidth;
-                  final playerColumnWidth = availableWidth * 0.65; // 球员名列宽度
+                  final playerColumnWidth = availableWidth * 0.55; // 球员名列宽度
                   // 确保所有行有相同数量的列
                   // 根据比赛局数动态确定总列数
                   // 获取最大局数，考虑到两位球员的得分
@@ -219,7 +219,8 @@ class TennisScoreCard extends StatelessWidget {
                   // 计算每个比分列的宽度
                   final scoreColumnWidth =
                       (availableWidth - playerColumnWidth) / (totalColumns - 1);
-
+                  final adjustedScoreColumnWidth =
+                      math.max(scoreColumnWidth, 22.0);
                   // 创建列宽映射
                   final Map<int, TableColumnWidth> columnWidths = {
                     0: FixedColumnWidth(playerColumnWidth), // 球员名字列
@@ -350,7 +351,8 @@ class TennisScoreCard extends StatelessWidget {
                                   Expanded(
                                     child: Row(
                                       children: [
-                                        Text(
+                                        Flexible(
+                                            child: Text(
                                           '${_formatPlayerName(player1.replaceAll(RegExp(r'[\r\n]+'), ''))} ${player1Rank.replaceAll(RegExp(r'[\r\n]+'), '')}',
                                           style: const TextStyle(
                                             color: Colors.white,
@@ -358,7 +360,7 @@ class TennisScoreCard extends StatelessWidget {
                                             fontSize: 14.0,
                                           ),
                                           overflow: TextOverflow.ellipsis,
-                                        ),
+                                        )),
                                         if (!isLive && isPlayer1Winner)
                                           const Padding(
                                             padding: EdgeInsets.only(left: 4.0),
@@ -402,12 +404,20 @@ class TennisScoreCard extends StatelessWidget {
                                 alignment: Alignment.centerRight,
                                 padding: const EdgeInsets.only(right: 8.0),
                                 child: isLive
-                                    ? Text(
-                                        currentGameScore1,
-                                        style: const TextStyle(
-                                          color: Color(0xFF94E831),
-                                          fontSize: 14.0,
-                                          fontWeight: FontWeight.bold,
+                                    ? Container(
+                                        constraints:
+                                            BoxConstraints(minWidth: 22),
+                                        child: Text(
+                                          currentGameScore1.isNotEmpty &&
+                                                  currentGameScore1 != 'null'
+                                              ? currentGameScore1
+                                              : '',
+                                          style: const TextStyle(
+                                            color: Color(0xFF94E831),
+                                            fontSize: 14.0,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                          textAlign: TextAlign.right,
                                         ),
                                       )
                                     : const SizedBox(), // 非直播时为空
@@ -577,7 +587,8 @@ class TennisScoreCard extends StatelessWidget {
                                     Expanded(
                                       child: Row(
                                         children: [
-                                          Text(
+                                          Flexible(
+                                              child: Text(
                                             '${_formatPlayerName(player2.replaceAll(RegExp(r'[\r\n]+'), ''))} ${player2Rank.replaceAll(RegExp(r'[\r\n]+'), '')}',
                                             style: const TextStyle(
                                               color: Colors.white,
@@ -585,7 +596,7 @@ class TennisScoreCard extends StatelessWidget {
                                               fontSize: 14.0,
                                             ),
                                             overflow: TextOverflow.ellipsis,
-                                          ),
+                                          )),
                                           if (!isLive && isPlayer2Winner)
                                             const Padding(
                                               padding:
@@ -596,6 +607,7 @@ class TennisScoreCard extends StatelessWidget {
                                                 size: 14.0,
                                               ),
                                             ),
+                                          // 显示发球指示器
                                           if (isLive && serving2)
                                             Padding(
                                               padding: const EdgeInsets.only(
@@ -629,7 +641,10 @@ class TennisScoreCard extends StatelessWidget {
                                 padding: const EdgeInsets.only(right: 8.0),
                                 child: isLive
                                     ? Text(
-                                        currentGameScore2,
+                                        currentGameScore2.isNotEmpty &&
+                                                currentGameScore2 != 'null'
+                                            ? currentGameScore2
+                                            : '',
                                         style: const TextStyle(
                                           color: Color(0xFF94E831),
                                           fontSize: 14.0,
