@@ -60,9 +60,9 @@ Android
 flutter build apk
 ```
 ## 📱 App Screenshots
-<img width="414" height="891" alt="IMG_2329" src="https://github.com/user-attachments/assets/e4cf61c9-664b-4d42-989d-f282f01cd7bb"/>
-<img width="414" height="891" alt="IMG_2329" src="https://github.com/user-attachments/assets/474fc0f4-9097-4121-8199-332dcdb7e730" />
-<img width="414" height="891" alt="IMG_2328" src="https://github.com/user-attachments/assets/4d2dc2d3-00bd-4cce-b269-1c7bf1110a62" />
+<img width="207" height="445" alt="IMG_2329" src="https://github.com/user-attachments/assets/e4cf61c9-664b-4d42-989d-f282f01cd7bb"/>
+<img width="207" height="445" alt="IMG_2329" src="https://github.com/user-attachments/assets/474fc0f4-9097-4121-8199-332dcdb7e730" />
+<img width="207" height="445" alt="IMG_2328" src="https://github.com/user-attachments/assets/4d2dc2d3-00bd-4cce-b269-1c7bf1110a62" />
 
 ## 🏗️ Project Structure
 lovegame_app/
