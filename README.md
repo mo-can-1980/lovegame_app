@@ -1,4 +1,5 @@
-<img width="1024" height="1024" alt="app_logo" src="https://github.com/user-attachments/assets/cb062270-f6c2-46f0-8c83-6cd6baf95ac9" />
+<div align="center"><img width="400" height="400" alt="app_logo" src="https://github.com/user-attachments/assets/cb062270-f6c2-46f0-8c83-6cd6baf95ac9" />
+</div>
 # LoveGame - Tennis Live Scores App 🎾
 
 [](https://flutter.dev)
